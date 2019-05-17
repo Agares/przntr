@@ -1,0 +1,7 @@
+[package]
+name = "przntr"
+version = "0.1.0"
+authors = ["agares <me@agares.info>"]
+edition = "2018"
+
+[dependencies]
