@@ -63,11 +63,8 @@ impl<'a> Tokenizer<'a> {
                     state = TokenizerState::ReadingString { start_index: index }
                 }
                 TokenizerState::ReadingString { .. } if character == '\\' => {
-                    match self.iter.peek() {
-                        Some((_, '\"')) => {
-                            self.iter.next();
-                        }
-                        _ => {}
+                    if let Some((_, '\"')) = self.iter.peek() {
+                        self.iter.next();
                     }
                 }
                 TokenizerState::ReadingString { start_index } if character == '"' => {
