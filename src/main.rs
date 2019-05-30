@@ -16,7 +16,7 @@ fn main() {
         let tokenizer_result = t.next();
         match tokenizer_result {
             TokenizerResult::Err(err) => panic!("{:?}", err),
-            TokenizerResult::End => {},
+            TokenizerResult::End => break,
             TokenizerResult::Ok(token) => {
                 println!("{:?}", token)
             }

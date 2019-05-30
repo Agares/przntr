@@ -35,6 +35,8 @@ pub enum Token<'a> {
     // must be a String, not a &str to source, since strings with escape sequence will be different
     // from the representation in source, e.g. "test\"string" will have `\"` replaced with `"`
     String(String),
+    OpeningBrace,
+    ClosingBrace
 }
 
 impl<'a> Tokenizer<'a> {
@@ -98,7 +100,17 @@ impl<'a> Tokenizer<'a> {
                     ))
                 }
                 TokenizerState::ReadingString { .. } => {}
-                TokenizerState::None => unimplemented!(),
+                TokenizerState::None => {
+                    if character.is_ascii_whitespace() {
+                        continue;
+                    }
+
+                    match character {
+                        '{' => { return TokenizerResult::Ok(Token::OpeningBrace); },
+                        '}' => { return TokenizerResult::Ok(Token::ClosingBrace); },
+                        _ => unimplemented!()
+                    }
+                },
             }
         }
 
@@ -208,4 +220,7 @@ mod tests {
         "\"\\",
         TokenizerFailure::UnfinishedEscapeSequence
     );
+
+    tokenizer_test!(can_read_braces, "{}", Token::OpeningBrace, Token::ClosingBrace);
+    tokenizer_test!(ignores_whitespace, "somename \t \"aaa\" \t {\r\n}\t", Token::Name("somename"), Token::String("aaa".into()), Token::OpeningBrace, Token::ClosingBrace);
 }
