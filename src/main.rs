@@ -1,5 +1,5 @@
-use std::fs;
 use crate::tokenizer::{Tokenizer, TokenizerResult};
+use std::fs;
 
 mod tokenizer;
 
@@ -17,9 +17,7 @@ fn main() {
         match tokenizer_result {
             TokenizerResult::Err(err) => panic!("{:?}", err),
             TokenizerResult::End => break,
-            TokenizerResult::Ok(token) => {
-                println!("{:?}", token)
-            }
+            TokenizerResult::Ok(token) => println!("{:?}", token),
         }
     }
 }

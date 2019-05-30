@@ -6,7 +6,8 @@ pub enum TokenizerFailure {
     UnexpectedCharacterInName { index: usize },
     UnclosedString,
     UnknownEscapeSequence(char),
-    UnfinishedEscapeSequence
+    UnfinishedEscapeSequence,
+    UnexpectedCharacter(char),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -36,7 +37,7 @@ pub enum Token<'a> {
     // from the representation in source, e.g. "test\"string" will have `\"` replaced with `"`
     String(String),
     OpeningBrace,
-    ClosingBrace
+    ClosingBrace,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -106,11 +107,17 @@ impl<'a> Tokenizer<'a> {
                     }
 
                     match character {
-                        '{' => { return TokenizerResult::Ok(Token::OpeningBrace); },
-                        '}' => { return TokenizerResult::Ok(Token::ClosingBrace); },
-                        _ => unimplemented!()
+                        '{' => {
+                            return TokenizerResult::Ok(Token::OpeningBrace);
+                        }
+                        '}' => {
+                            return TokenizerResult::Ok(Token::ClosingBrace);
+                        }
+                        c => {
+                            return TokenizerResult::Err(TokenizerFailure::UnexpectedCharacter(c));
+                        }
                     }
-                },
+                }
             }
         }
 
@@ -221,6 +228,23 @@ mod tests {
         TokenizerFailure::UnfinishedEscapeSequence
     );
 
-    tokenizer_test!(can_read_braces, "{}", Token::OpeningBrace, Token::ClosingBrace);
-    tokenizer_test!(ignores_whitespace, "somename \t \"aaa\" \t {\r\n}\t", Token::Name("somename"), Token::String("aaa".into()), Token::OpeningBrace, Token::ClosingBrace);
+    tokenizer_test!(
+        can_read_braces,
+        "{}",
+        Token::OpeningBrace,
+        Token::ClosingBrace
+    );
+    tokenizer_test!(
+        ignores_whitespace,
+        "somename \t \"aaa\" \t {\r\n}\t",
+        Token::Name("somename"),
+        Token::String("aaa".into()),
+        Token::OpeningBrace,
+        Token::ClosingBrace
+    );
+    tokenizer_fail_test!(
+        fails_on_unexpected_character,
+        "🆒",
+        TokenizerFailure::UnexpectedCharacter('🆒')
+    );
 }
