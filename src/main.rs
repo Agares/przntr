@@ -5,6 +5,8 @@ use std::str::CharIndices;
 enum TokenizerFailure {
     UnexpectedCharacterInName { index: usize },
     UnclosedString,
+    UnknownEscapeSequence(char),
+    UnfinishedEscapeSequence,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -63,8 +65,21 @@ impl<'a> Tokenizer<'a> {
                     state = TokenizerState::ReadingString { start_index: index }
                 }
                 TokenizerState::ReadingString { .. } if character == '\\' => {
-                    if let Some((_, '\"')) = self.iter.peek() {
-                        self.iter.next();
+                    match self.iter.peek() {
+                        Some((_, '\"')) => {
+                            self.iter.next();
+                        }
+                        Some((_, character)) => {
+                            self.is_failed = true;
+                            return TokenizerResult::Err(TokenizerFailure::UnknownEscapeSequence(
+                                *character,
+                            ));
+                        }
+                        _ => {
+                            return TokenizerResult::Err(
+                                TokenizerFailure::UnfinishedEscapeSequence,
+                            );
+                        }
                     }
                 }
                 TokenizerState::ReadingString { start_index } if character == '"' => {
@@ -120,6 +135,18 @@ mod tests {
         };
     }
 
+    macro_rules! tokenizer_fail_test {
+        ( $test_name: ident, $test_string: expr, $expected_error:expr ) => {
+            #[test]
+            pub fn $test_name() {
+                let mut tokenizer = Tokenizer::new($test_string);
+
+                assert_eq!(TokenizerResult::Err($expected_error), tokenizer.next());
+                assert_eq!(TokenizerResult::End, tokenizer.next());
+            }
+        };
+    }
+
     tokenizer_test!(can_tokenize_a_name, "a", Token::Name("a"));
     tokenizer_test!(
         can_tokenize_a_multicharacter_name,
@@ -138,17 +165,11 @@ mod tests {
         Token::Name("first"),
         Token::Name("second")
     );
-
-    #[test]
-    pub fn fails_on_invalid_character_in_name() {
-        let mut tokenizer = Tokenizer::new("name\"");
-
-        assert_eq!(
-            TokenizerResult::Err(TokenizerFailure::UnexpectedCharacterInName { index: 4 }),
-            tokenizer.next()
-        );
-        assert_eq!(TokenizerResult::End, tokenizer.next());
-    }
+    tokenizer_fail_test!(
+        fails_on_invalid_character_in_name,
+        "name\"",
+        TokenizerFailure::UnexpectedCharacterInName { index: 4 }
+    );
 
     #[test]
     pub fn returns_end_after_a_failure() {
@@ -167,20 +188,26 @@ mod tests {
         Token::String("some string".into())
     );
 
-    #[test]
-    pub fn fails_on_unclosed_string() {
-        let mut tokenizer = Tokenizer::new("\"bla");
-
-        assert_eq!(
-            TokenizerResult::Err(TokenizerFailure::UnclosedString),
-            tokenizer.next()
-        );
-        assert_eq!(TokenizerResult::End, tokenizer.next());
-    }
+    tokenizer_fail_test!(
+        fails_on_unclosed_string,
+        "\"bla",
+        TokenizerFailure::UnclosedString
+    );
 
     tokenizer_test!(
         can_read_a_string_with_escaped_quotation_mark,
         "\"test\\\"some\\\"words\"",
         Token::String("test\"some\"words".into())
+    );
+
+    tokenizer_fail_test!(
+        fails_on_unknown_escape_sequence,
+        "\"\\a",
+        TokenizerFailure::UnknownEscapeSequence('a')
+    );
+    tokenizer_fail_test!(
+        fails_on_unfinished_escape_sequence,
+        "\"\\",
+        TokenizerFailure::UnfinishedEscapeSequence
     );
 }
