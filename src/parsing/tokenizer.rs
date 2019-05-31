@@ -40,6 +40,10 @@ pub enum Token<'a> {
     ClosingBrace,
 }
 
+pub trait TokenStream {
+    fn next(&mut self) -> TokenizerResult;
+}
+
 impl<'a> Tokenizer<'a> {
     pub fn new(data: &'a str) -> Self {
         Tokenizer {
@@ -48,8 +52,10 @@ impl<'a> Tokenizer<'a> {
             is_failed: false,
         }
     }
+}
 
-    pub fn next(&mut self) -> TokenizerResult {
+impl<'a> TokenStream for Tokenizer<'a> {
+    fn next(&mut self) -> TokenizerResult {
         if self.is_failed {
             return TokenizerResult::End;
         }
@@ -135,7 +141,7 @@ impl<'a> Tokenizer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::tokenizer::*;
+    use super::*;
 
     macro_rules! tokenizer_test {
         ( $test_name: ident, $test_string: expr, $($expected_token:expr),+ ) => {

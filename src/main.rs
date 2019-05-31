@@ -1,7 +1,7 @@
-use crate::tokenizer::{Tokenizer, TokenizerResult};
+use parsing::tokenizer::{TokenStream, Tokenizer, TokenizerResult};
 use std::fs;
 
-mod tokenizer;
+mod parsing;
 
 fn main() {
     let mut args = std::env::args();
