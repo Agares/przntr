@@ -1,6 +1,13 @@
 use super::tokenizer::{Token, TokenStream, TokenizerResult};
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum ParserError {
+    UnexpectedToken, // todo add information about the actual/expected token
+    InvalidSectionName { actual: String, expected: String },
+    UnexpectedEndOfStream, // todo add information about the expected token
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub struct Slide {
     name: String,
 }
@@ -8,12 +15,6 @@ pub struct Slide {
 #[derive(Debug, Eq, PartialEq)]
 pub struct Presentation {
     slides: Vec<Slide>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum ParserError {
-    UnexpectedToken, // todo add information about the actual/expected token
-    InvalidSectionName { actual: String, expected: String },
 }
 
 impl Slide {
@@ -32,6 +33,8 @@ pub struct Parser<'a, T: TokenStream> {
     token_stream: &'a mut T,
 }
 
+const NAME_SLIDE:&str = "slide";
+
 impl<'a, T: TokenStream> Parser<'a, T> {
     pub fn new(token_stream: &'a mut T) -> Self {
         Parser { token_stream }
@@ -49,10 +52,10 @@ impl<'a, T: TokenStream> Parser<'a, T> {
             _ => Err(ParserError::UnexpectedToken),
         }?;
 
-        if name != "slide" {
+        if name != NAME_SLIDE {
             return Err(ParserError::InvalidSectionName {
                 actual: name.into(),
-                expected: "slide".into(),
+                expected: NAME_SLIDE.into(),
             });
         }
 
@@ -60,6 +63,16 @@ impl<'a, T: TokenStream> Parser<'a, T> {
             TokenizerResult::Ok(Token::String(slide_name)) => Ok(slide_name),
             _ => Err(ParserError::UnexpectedToken),
         }?;
+
+        match self.token_stream.next() {
+            TokenizerResult::Ok(Token::OpeningBrace) => {}
+            _ => return Err(ParserError::UnexpectedEndOfStream), // todo this can also be unexpected token
+        }
+
+        match self.token_stream.next() {
+            TokenizerResult::Ok(Token::ClosingBrace) => {}
+            _ => return Err(ParserError::UnexpectedEndOfStream), // todo this can also be unexpected token
+        }
 
         Ok(Slide::new(slide_name))
     }
@@ -129,5 +142,18 @@ mod test {
                 expected: "slide".into()
             })
         );
+    }
+
+    #[test]
+    pub fn fails_on_missing_braces() {
+        let mut tokens = vec![
+            TokenizerResult::Ok(Token::Name("slide")),
+            TokenizerResult::Ok(Token::String("some slide".into())),
+        ];
+        let mut stream = MockTokenStream::new(&mut tokens);
+
+        let mut parser = Parser::<MockTokenStream>::new(&mut stream);
+
+        assert_eq!(parser.parse(), Err(ParserError::UnexpectedEndOfStream));
     }
 }
