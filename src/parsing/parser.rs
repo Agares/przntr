@@ -59,6 +59,10 @@ impl<'a, T: TokenStream> Parser<'a, T> {
             });
         }
 
+        self.parse_slide_name_and_contents()
+    }
+
+    fn parse_slide_name_and_contents(&mut self) -> Result<Slide, ParserError> {
         let slide_name = match self.token_stream.next() {
             TokenizerResult::Ok(Token::String(slide_name)) => Ok(slide_name),
             _ => Err(ParserError::UnexpectedToken),
