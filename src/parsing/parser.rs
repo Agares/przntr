@@ -2,8 +2,7 @@ use super::tokenizer::{Token, TokenStream, TokenizerResult};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
-    UnexpectedToken, // todo add information about the actual/expected token
-    InvalidSectionName { actual: String, expected: String },
+    UnexpectedToken,       // todo add information about the actual/expected token
     UnexpectedEndOfStream, // todo add information about the expected token
 }
 
@@ -65,8 +64,6 @@ pub struct Parser<'a, T: TokenStream> {
     token_stream: PeekableTokenStream<'a, T>,
 }
 
-const NAME_SLIDE: &str = "slide";
-
 impl<'a, T: TokenStream> Parser<'a, T> {
     pub fn new(token_stream: &'a mut T) -> Self {
         Parser {
@@ -81,16 +78,10 @@ impl<'a, T: TokenStream> Parser<'a, T> {
     }
 
     fn parse_block(&mut self) -> Result<Slide, ParserError> {
-        let name = match self.token_stream.next() {
-            TokenizerResult::Ok(Token::Name(name)) => Ok(name),
-            _ => Err(ParserError::UnexpectedToken),
-        }?;
-
-        if name != NAME_SLIDE {
-            return Err(ParserError::InvalidSectionName {
-                actual: name,
-                expected: NAME_SLIDE.into(),
-            });
+        match self.token_stream.next() {
+            TokenizerResult::Ok(Token::KeywordSlide) => {}
+            TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
+            _ => return Err(ParserError::UnexpectedEndOfStream),
         }
 
         self.parse_slide_name_and_contents()
@@ -148,7 +139,7 @@ mod test {
     #[test]
     pub fn can_parse_slide_block() {
         let mut tokens = vec![
-            TokenizerResult::Ok(Token::Name("slide".into())),
+            TokenizerResult::Ok(Token::KeywordSlide),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::ClosingBrace),
@@ -184,16 +175,13 @@ mod test {
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::ClosingBrace),
         ],
-        ParserError::InvalidSectionName {
-            actual: "notslide".into(),
-            expected: "slide".into()
-        }
+        ParserError::UnexpectedToken
     );
 
     parser_test_fail!(
         fails_on_missing_braces,
         vec![
-            TokenizerResult::Ok(Token::Name("slide".into())),
+            TokenizerResult::Ok(Token::KeywordSlide),
             TokenizerResult::Ok(Token::String("some slide".into())),
         ],
         ParserError::UnexpectedEndOfStream
@@ -202,7 +190,7 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_name,
         vec![
-            TokenizerResult::Ok(Token::Name("slide".into())),
+            TokenizerResult::Ok(Token::KeywordSlide),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::ClosingBrace)
         ],
@@ -212,7 +200,7 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_opening_brace,
         vec![
-            TokenizerResult::Ok(Token::Name("slide".into())),
+            TokenizerResult::Ok(Token::KeywordSlide),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::OpeningBrace),
@@ -223,7 +211,7 @@ mod test {
     #[test]
     pub fn without_peeking_returns_the_stream_verbatim() {
         let mut tokens = vec![
-            TokenizerResult::Ok(Token::Name("slide".into())),
+            TokenizerResult::Ok(Token::KeywordSlide),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::ClosingBrace),
@@ -232,7 +220,7 @@ mod test {
         let mut peekable_stream = PeekableTokenStream::new(&mut stream);
 
         assert_eq!(
-            TokenizerResult::Ok(Token::Name("slide".into())),
+            TokenizerResult::Ok(Token::KeywordSlide),
             peekable_stream.next()
         );
         assert_eq!(

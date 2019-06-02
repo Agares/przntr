@@ -38,6 +38,7 @@ pub enum Token {
     String(String),
     OpeningBrace,
     ClosingBrace,
+    KeywordSlide,
 }
 
 pub trait TokenStream {
@@ -51,6 +52,13 @@ impl<'a> Tokenizer<'a> {
             data,
             is_failed: false,
         }
+    }
+
+    fn handle_name_or_keyword(&self, name: &str) -> TokenizerResult {
+        TokenizerResult::Ok(match name {
+            "slide" => Token::KeywordSlide,
+            _ => Token::Name(name.into()),
+        })
     }
 }
 
@@ -69,7 +77,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 }
                 TokenizerState::ReadingName { .. } if character.is_ascii_alphabetic() => {}
                 TokenizerState::ReadingName { start_index } if character.is_ascii_whitespace() => {
-                    return TokenizerResult::Ok(Token::Name(self.data[start_index..index].into()))
+                    return self.handle_name_or_keyword(&self.data[start_index..index]);
                 }
                 TokenizerState::ReadingName { .. } => {
                     self.is_failed = true;
@@ -129,7 +137,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
 
         match state {
             TokenizerState::ReadingName { start_index } => {
-                TokenizerResult::Ok(Token::Name(self.data[start_index..].into()))
+                self.handle_name_or_keyword(&self.data[start_index..])
             }
             TokenizerState::None => TokenizerResult::End,
             TokenizerState::ReadingString { .. } => {
@@ -253,4 +261,6 @@ mod tests {
         "🆒",
         TokenizerFailure::UnexpectedCharacter('🆒')
     );
+
+    tokenizer_test!(handles_slide_as_keyword, "slide", Token::KeywordSlide);
 }
