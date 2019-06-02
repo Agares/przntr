@@ -31,18 +31,47 @@ impl Presentation {
 
 struct PeekableTokenStream<'a, T: TokenStream> {
     token_stream: &'a mut T,
-    peeked: Option<TokenizerResult<'a>>,
+    peeked: Option<TokenizerResult>,
+}
+
+impl<'a, T: TokenStream> PeekableTokenStream<'a, T> {
+    pub fn new(token_stream: &'a mut T) -> Self {
+        PeekableTokenStream {
+            token_stream,
+            peeked: None,
+        }
+    }
+
+    pub fn peek(&mut self) -> Option<&TokenizerResult> {
+        self.peeked = Some(self.next());
+
+        self.peeked.as_ref()
+    }
+}
+
+impl<'a, T: TokenStream> TokenStream for PeekableTokenStream<'a, T> {
+    fn next(&mut self) -> TokenizerResult {
+        match self.peeked.take() {
+            Some(p) => {
+                self.peeked = None;
+                p
+            }
+            None => self.token_stream.next(),
+        }
+    }
 }
 
 pub struct Parser<'a, T: TokenStream> {
-    token_stream: &'a mut T,
+    token_stream: PeekableTokenStream<'a, T>,
 }
 
 const NAME_SLIDE: &str = "slide";
 
 impl<'a, T: TokenStream> Parser<'a, T> {
     pub fn new(token_stream: &'a mut T) -> Self {
-        Parser { token_stream }
+        Parser {
+            token_stream: PeekableTokenStream::new(token_stream),
+        }
     }
 
     pub fn parse(&mut self) -> Result<Presentation, ParserError> {
@@ -59,7 +88,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
         if name != NAME_SLIDE {
             return Err(ParserError::InvalidSectionName {
-                actual: name.into(),
+                actual: name,
                 expected: NAME_SLIDE.into(),
             });
         }
@@ -95,11 +124,11 @@ mod test {
     use ::std::vec::Drain;
 
     struct MockTokenStream<'a> {
-        iter: Drain<'a, TokenizerResult<'a>>,
+        iter: Drain<'a, TokenizerResult>,
     }
 
     impl<'a> MockTokenStream<'a> {
-        pub fn new(results: &'a mut Vec<TokenizerResult<'a>>) -> Self {
+        pub fn new(results: &'a mut Vec<TokenizerResult>) -> Self {
             MockTokenStream {
                 iter: results.drain(..),
             }
@@ -119,7 +148,7 @@ mod test {
     #[test]
     pub fn can_parse_slide_block() {
         let mut tokens = vec![
-            TokenizerResult::Ok(Token::Name("slide")),
+            TokenizerResult::Ok(Token::Name("slide".into())),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::ClosingBrace),
@@ -150,7 +179,7 @@ mod test {
     parser_test_fail!(
         fails_if_block_type_is_not_slide,
         vec![
-            TokenizerResult::Ok(Token::Name("notslide")),
+            TokenizerResult::Ok(Token::Name("notslide".into())),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::ClosingBrace),
@@ -164,7 +193,7 @@ mod test {
     parser_test_fail!(
         fails_on_missing_braces,
         vec![
-            TokenizerResult::Ok(Token::Name("slide")),
+            TokenizerResult::Ok(Token::Name("slide".into())),
             TokenizerResult::Ok(Token::String("some slide".into())),
         ],
         ParserError::UnexpectedEndOfStream
@@ -173,7 +202,7 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_name,
         vec![
-            TokenizerResult::Ok(Token::Name("slide")),
+            TokenizerResult::Ok(Token::Name("slide".into())),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::ClosingBrace)
         ],
@@ -183,11 +212,60 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_opening_brace,
         vec![
-            TokenizerResult::Ok(Token::Name("slide")),
+            TokenizerResult::Ok(Token::Name("slide".into())),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::OpeningBrace),
         ],
         ParserError::UnexpectedToken
     );
+
+    #[test]
+    pub fn without_peeking_returns_the_stream_verbatim() {
+        let mut tokens = vec![
+            TokenizerResult::Ok(Token::Name("slide".into())),
+            TokenizerResult::Ok(Token::String("some slide".into())),
+            TokenizerResult::Ok(Token::OpeningBrace),
+            TokenizerResult::Ok(Token::ClosingBrace),
+        ];
+        let mut stream = MockTokenStream::new(&mut tokens);
+        let mut peekable_stream = PeekableTokenStream::new(&mut stream);
+
+        assert_eq!(
+            TokenizerResult::Ok(Token::Name("slide".into())),
+            peekable_stream.next()
+        );
+        assert_eq!(
+            TokenizerResult::Ok(Token::String("some slide".into())),
+            peekable_stream.next()
+        );
+        assert_eq!(
+            TokenizerResult::Ok(Token::OpeningBrace),
+            peekable_stream.next()
+        );
+        assert_eq!(
+            TokenizerResult::Ok(Token::ClosingBrace),
+            peekable_stream.next()
+        );
+    }
+
+    #[test]
+    pub fn returns_the_same_token_on_next_after_peek() {
+        let mut tokens = vec![
+            TokenizerResult::Ok(Token::OpeningBrace),
+            TokenizerResult::Ok(Token::ClosingBrace),
+        ];
+
+        let mut stream = MockTokenStream::new(&mut tokens);
+        let mut peekable_stream = PeekableTokenStream::new(&mut stream);
+
+        assert_eq!(
+            &TokenizerResult::Ok(Token::OpeningBrace),
+            peekable_stream.peek().unwrap()
+        );
+        assert_eq!(
+            TokenizerResult::Ok(Token::OpeningBrace),
+            peekable_stream.next()
+        );
+    }
 }

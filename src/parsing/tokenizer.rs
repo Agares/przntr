@@ -11,8 +11,8 @@ pub enum TokenizerFailure {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum TokenizerResult<'a> {
-    Ok(Token<'a>),
+pub enum TokenizerResult {
+    Ok(Token),
     Err(TokenizerFailure),
     End,
 }
@@ -31,8 +31,8 @@ pub struct Tokenizer<'a> {
 }
 
 #[derive(Eq, PartialEq, Debug)]
-pub enum Token<'a> {
-    Name(&'a str),
+pub enum Token {
+    Name(String),
     // must be a String, not a &str to source, since strings with escape sequence will be different
     // from the representation in source, e.g. "test\"string" will have `\"` replaced with `"`
     String(String),
@@ -69,7 +69,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 }
                 TokenizerState::ReadingName { .. } if character.is_ascii_alphabetic() => {}
                 TokenizerState::ReadingName { start_index } if character.is_ascii_whitespace() => {
-                    return TokenizerResult::Ok(Token::Name(&self.data[start_index..index]))
+                    return TokenizerResult::Ok(Token::Name(self.data[start_index..index].into()))
                 }
                 TokenizerState::ReadingName { .. } => {
                     self.is_failed = true;
@@ -129,7 +129,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
 
         match state {
             TokenizerState::ReadingName { start_index } => {
-                TokenizerResult::Ok(Token::Name(&self.data[start_index..]))
+                TokenizerResult::Ok(Token::Name(self.data[start_index..].into()))
             }
             TokenizerState::None => TokenizerResult::End,
             TokenizerState::ReadingString { .. } => {
@@ -170,23 +170,23 @@ mod tests {
         };
     }
 
-    tokenizer_test!(can_tokenize_a_name, "a", Token::Name("a"));
+    tokenizer_test!(can_tokenize_a_name, "a", Token::Name("a".into()));
     tokenizer_test!(
         can_tokenize_a_multicharacter_name,
         "test",
-        Token::Name("test")
+        Token::Name("test".into())
     );
     tokenizer_test!(
         can_tokenize_multiple_names,
         "something else",
-        Token::Name("something"),
-        Token::Name("else")
+        Token::Name("something".into()),
+        Token::Name("else".into())
     );
     tokenizer_test!(
         can_read_names_separated_by_unix_newlines,
         "first\nsecond",
-        Token::Name("first"),
-        Token::Name("second")
+        Token::Name("first".into()),
+        Token::Name("second".into())
     );
     tokenizer_fail_test!(
         fails_on_invalid_character_in_name,
@@ -243,7 +243,7 @@ mod tests {
     tokenizer_test!(
         ignores_whitespace,
         "somename \t \"aaa\" \t {\r\n}\t",
-        Token::Name("somename"),
+        Token::Name("somename".into()),
         Token::String("aaa".into()),
         Token::OpeningBrace,
         Token::ClosingBrace

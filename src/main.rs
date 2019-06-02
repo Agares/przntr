@@ -1,4 +1,5 @@
-use parsing::tokenizer::{TokenStream, Tokenizer, TokenizerResult};
+use crate::parsing::parser::Parser;
+use parsing::tokenizer::Tokenizer;
 use std::fs;
 
 mod parsing;
@@ -11,13 +12,7 @@ fn main() {
     let file = fs::read_to_string(args.next().unwrap()).unwrap();
 
     let mut t = Tokenizer::new(&file);
+    let mut p = Parser::new(&mut t);
 
-    loop {
-        let tokenizer_result = t.next();
-        match tokenizer_result {
-            TokenizerResult::Err(err) => panic!("{:?}", err),
-            TokenizerResult::End => break,
-            TokenizerResult::Ok(token) => println!("{:?}", token),
-        }
-    }
+    println!("{:?}", p.parse());
 }
