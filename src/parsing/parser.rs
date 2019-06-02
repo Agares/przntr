@@ -29,11 +29,16 @@ impl Presentation {
     }
 }
 
+struct PeekableTokenStream<'a, T: TokenStream> {
+    token_stream: &'a mut T,
+    peeked: Option<TokenizerResult<'a>>,
+}
+
 pub struct Parser<'a, T: TokenStream> {
     token_stream: &'a mut T,
 }
 
-const NAME_SLIDE:&str = "slide";
+const NAME_SLIDE: &str = "slide";
 
 impl<'a, T: TokenStream> Parser<'a, T> {
     pub fn new(token_stream: &'a mut T) -> Self {
@@ -127,37 +132,39 @@ mod test {
         );
     }
 
-    #[test]
-    pub fn fails_if_block_type_is_not_slide() {
-        let mut tokens = vec![
+    macro_rules! parser_test_fail {
+        ($test_name:ident, $results:expr, $expected_error:expr) => {
+            #[test]
+            pub fn $test_name() {
+                let mut tokens = $results;
+                let mut stream = MockTokenStream::new(&mut tokens);
+                let mut parser = Parser::new(&mut stream);
+
+                assert_eq!(parser.parse(), Err($expected_error));
+            }
+        };
+    }
+
+    parser_test_fail!(
+        fails_if_block_type_is_not_slide2,
+        vec![
             TokenizerResult::Ok(Token::Name("notslide")),
             TokenizerResult::Ok(Token::String("some slide".into())),
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::ClosingBrace),
-        ];
-        let mut stream = MockTokenStream::new(&mut tokens);
+        ],
+        ParserError::InvalidSectionName {
+            actual: "notslide".into(),
+            expected: "slide".into()
+        }
+    );
 
-        let mut parser = Parser::<MockTokenStream>::new(&mut stream);
-
-        assert_eq!(
-            parser.parse(),
-            Err(ParserError::InvalidSectionName {
-                actual: "notslide".into(),
-                expected: "slide".into()
-            })
-        );
-    }
-
-    #[test]
-    pub fn fails_on_missing_braces() {
-        let mut tokens = vec![
+    parser_test_fail!(
+        fails_on_missing_braces,
+        vec![
             TokenizerResult::Ok(Token::Name("slide")),
             TokenizerResult::Ok(Token::String("some slide".into())),
-        ];
-        let mut stream = MockTokenStream::new(&mut tokens);
-
-        let mut parser = Parser::<MockTokenStream>::new(&mut stream);
-
-        assert_eq!(parser.parse(), Err(ParserError::UnexpectedEndOfStream));
-    }
+        ],
+        ParserError::UnexpectedEndOfStream
+    );
 }
