@@ -146,7 +146,7 @@ mod test {
     }
 
     parser_test_fail!(
-        fails_if_block_type_is_not_slide2,
+        fails_if_block_type_is_not_slide,
         vec![
             TokenizerResult::Ok(Token::Name("notslide")),
             TokenizerResult::Ok(Token::String("some slide".into())),
