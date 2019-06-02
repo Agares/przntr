@@ -75,12 +75,14 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
         match self.token_stream.next() {
             TokenizerResult::Ok(Token::OpeningBrace) => {}
-            _ => return Err(ParserError::UnexpectedEndOfStream), // todo this can also be unexpected token
+            TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
+            _ => return Err(ParserError::UnexpectedEndOfStream),
         }
 
         match self.token_stream.next() {
             TokenizerResult::Ok(Token::ClosingBrace) => {}
-            _ => return Err(ParserError::UnexpectedEndOfStream), // todo this can also be unexpected token
+            TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
+            _ => return Err(ParserError::UnexpectedEndOfStream),
         }
 
         Ok(Slide::new(slide_name))
@@ -166,5 +168,26 @@ mod test {
             TokenizerResult::Ok(Token::String("some slide".into())),
         ],
         ParserError::UnexpectedEndOfStream
+    );
+
+    parser_test_fail!(
+        fails_on_unexpected_token_after_slide_name,
+        vec![
+            TokenizerResult::Ok(Token::Name("slide")),
+            TokenizerResult::Ok(Token::String("some slide".into())),
+            TokenizerResult::Ok(Token::ClosingBrace)
+        ],
+        ParserError::UnexpectedToken
+    );
+
+    parser_test_fail!(
+        fails_on_unexpected_token_after_slide_opening_brace,
+        vec![
+            TokenizerResult::Ok(Token::Name("slide")),
+            TokenizerResult::Ok(Token::String("some slide".into())),
+            TokenizerResult::Ok(Token::OpeningBrace),
+            TokenizerResult::Ok(Token::OpeningBrace),
+        ],
+        ParserError::UnexpectedToken
     );
 }
