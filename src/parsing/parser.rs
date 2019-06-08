@@ -136,24 +136,6 @@ mod test {
         }
     }
 
-    #[test]
-    pub fn can_parse_slide_block() {
-        let mut tokens = vec![
-            TokenizerResult::Ok(Token::KeywordSlide),
-            TokenizerResult::Ok(Token::String("some slide".into())),
-            TokenizerResult::Ok(Token::OpeningBrace),
-            TokenizerResult::Ok(Token::ClosingBrace),
-        ];
-        let mut stream = MockTokenStream::new(&mut tokens);
-
-        let mut parser = Parser::<MockTokenStream>::new(&mut stream);
-
-        assert_eq!(
-            parser.parse().unwrap(),
-            Presentation::new(vec![Slide::new("some slide".into())])
-        );
-    }
-
     macro_rules! parser_test_fail {
         ($test_name:ident, $results:expr, $expected_error:expr) => {
             #[test]
@@ -166,6 +148,30 @@ mod test {
             }
         };
     }
+
+    macro_rules! parser_test {
+        ($test_name:ident, $results:expr, $expected_presentation:expr) => {
+            #[test]
+            pub fn $test_name() {
+                let mut tokens = $results;
+                let mut stream = MockTokenStream::new(&mut tokens);
+                let mut parser = Parser::new(&mut stream);
+
+                assert_eq!(parser.parse().unwrap(), $expected_presentation);
+            }
+        };
+    }
+
+    parser_test!(
+        can_parse_slide_block,
+        vec![
+            TokenizerResult::Ok(Token::KeywordSlide),
+            TokenizerResult::Ok(Token::String("some slide".into())),
+            TokenizerResult::Ok(Token::OpeningBrace),
+            TokenizerResult::Ok(Token::ClosingBrace),
+        ],
+        Presentation::new(vec![Slide::new("some slide".into())])
+    );
 
     parser_test_fail!(
         fails_if_block_type_is_not_slide,
