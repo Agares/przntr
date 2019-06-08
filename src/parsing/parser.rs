@@ -13,6 +13,7 @@ pub struct Slide {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Presentation {
+    title: String,
     slides: Vec<Slide>,
 }
 
@@ -23,8 +24,8 @@ impl Slide {
 }
 
 impl Presentation {
-    pub fn new(slides: Vec<Slide>) -> Self {
-        Presentation { slides }
+    pub fn new(title: String, slides: Vec<Slide>) -> Self {
+        Presentation { title, slides }
     }
 }
 
@@ -72,22 +73,29 @@ impl<'a, T: TokenStream> Parser<'a, T> {
     }
 
     pub fn parse(&mut self) -> Result<Presentation, ParserError> {
-        let slide = self.parse_block()?;
+        let mut slides:Vec<Slide> = Vec::new();
+        let mut title:String = "".into();
 
-        Ok(Presentation::new(vec![slide]))
+        match self.token_stream.peek() {
+            None => {},
+            Some(TokenizerResult::End) => {},
+            Some(TokenizerResult::Err(error)) => unimplemented!(), // fixme
+            Some(TokenizerResult::Ok(Token::KeywordSlide)) => slides.push(self.parse_slide()?),
+            Some(TokenizerResult::Ok(Token::KeywordMetadata)) => title = self.parse_metadata()?,
+            Some(TokenizerResult::Ok(_)) => return Err(ParserError::UnexpectedToken),
+        }
+        // slides.push(self.parse_block()?);
+
+        Ok(Presentation::new(title, slides))
     }
 
-    fn parse_block(&mut self) -> Result<Slide, ParserError> {
+    fn parse_slide(&mut self) -> Result<Slide, ParserError> {
         match self.token_stream.next() {
             TokenizerResult::Ok(Token::KeywordSlide) => {}
             TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
             _ => return Err(ParserError::UnexpectedEndOfStream),
         }
 
-        self.parse_slide_name_and_contents()
-    }
-
-    fn parse_slide_name_and_contents(&mut self) -> Result<Slide, ParserError> {
         let slide_name = match self.token_stream.next() {
             TokenizerResult::Ok(Token::String(slide_name)) => Ok(slide_name),
             _ => Err(ParserError::UnexpectedToken),
@@ -106,6 +114,41 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         }
 
         Ok(Slide::new(slide_name))
+    }
+
+    fn parse_metadata(&mut self) -> Result<String, ParserError> {
+        match self.token_stream.next() {
+            TokenizerResult::Ok(Token::KeywordMetadata) => {},
+            TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
+            _ => return Err(ParserError::UnexpectedEndOfStream)
+        }
+
+        match self.token_stream.next() {
+            TokenizerResult::Ok(Token::OpeningBrace) => {},
+            TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
+            _ => return Err(ParserError::UnexpectedEndOfStream)
+        }
+
+
+        match self.token_stream.next() {
+            TokenizerResult::Ok(Token::KeywordTitle) => {},
+            TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
+            _ => return Err(ParserError::UnexpectedEndOfStream)
+        }
+
+        let title = match self.token_stream.next() {
+            TokenizerResult::Ok(Token::String(title)) => title,
+            TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
+            _ => return Err(ParserError::UnexpectedEndOfStream)
+        };
+
+        match self.token_stream.next() {
+            TokenizerResult::Ok(Token::ClosingBrace) => {},
+            TokenizerResult::Ok(_) => return Err(ParserError::UnexpectedToken),
+            _ => return Err(ParserError::UnexpectedEndOfStream)
+        };
+
+        Ok(title)
     }
 }
 
@@ -162,6 +205,7 @@ mod test {
         };
     }
 
+    // todo are presentations without metadata allowed?
     parser_test!(
         can_parse_slide_block,
         vec![
@@ -170,7 +214,19 @@ mod test {
             TokenizerResult::Ok(Token::OpeningBrace),
             TokenizerResult::Ok(Token::ClosingBrace),
         ],
-        Presentation::new(vec![Slide::new("some slide".into())])
+        Presentation::new("".into(), vec![Slide::new("some slide".into())])
+    );
+
+    parser_test!(
+        can_parse_metadata_block,
+        vec![
+            TokenizerResult::Ok(Token::KeywordMetadata),
+            TokenizerResult::Ok(Token::OpeningBrace),
+            TokenizerResult::Ok(Token::KeywordTitle),
+            TokenizerResult::Ok(Token::String("some title".into())),
+            TokenizerResult::Ok(Token::ClosingBrace)
+        ],
+        Presentation::new("some title".into(), vec![])
     );
 
     parser_test_fail!(

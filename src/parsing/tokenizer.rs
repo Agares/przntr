@@ -40,6 +40,7 @@ pub enum Token {
     ClosingBrace,
     KeywordSlide,
     KeywordTitle,
+    KeywordMetadata
 }
 
 pub trait TokenStream {
@@ -59,6 +60,7 @@ impl<'a> Tokenizer<'a> {
         TokenizerResult::Ok(match name {
             "slide" => Token::KeywordSlide,
             "title" => Token::KeywordTitle,
+            "metadata" => Token::KeywordMetadata,
             _ => Token::Name(name.into()),
         })
     }
@@ -285,4 +287,5 @@ mod tests {
 
     tokenizer_test!(handles_slide_as_keyword, "slide", Token::KeywordSlide);
     tokenizer_test!(handles_title_as_keyword, "title", Token::KeywordTitle);
+    tokenizer_test!(handles_metadata_as_keyword, "metadata", Token::KeywordMetadata);
 }
