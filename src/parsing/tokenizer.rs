@@ -39,6 +39,7 @@ pub enum Token {
     OpeningBrace,
     ClosingBrace,
     KeywordSlide,
+    KeywordTitle,
 }
 
 pub trait TokenStream {
@@ -57,8 +58,13 @@ impl<'a> Tokenizer<'a> {
     fn handle_name_or_keyword(&self, name: &str) -> TokenizerResult {
         TokenizerResult::Ok(match name {
             "slide" => Token::KeywordSlide,
+            "title" => Token::KeywordTitle,
             _ => Token::Name(name.into()),
         })
+    }
+
+    fn is_name_character(&self, character: char) -> bool {
+        character.is_ascii_alphanumeric() || character == '_' || character == '-'
     }
 }
 
@@ -75,8 +81,10 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 TokenizerState::None if character.is_ascii_alphabetic() => {
                     state = TokenizerState::ReadingName { start_index: index }
                 }
-                TokenizerState::ReadingName { .. } if character.is_ascii_alphabetic() => {}
-                TokenizerState::ReadingName { start_index } if character.is_ascii_whitespace() => {
+                TokenizerState::ReadingName { .. } if self.is_name_character(character) => {}
+                TokenizerState::ReadingName { start_index }
+                    if (character.is_ascii_whitespace()) =>
+                {
                     return self.handle_name_or_keyword(&self.data[start_index..index]);
                 }
                 TokenizerState::ReadingName { .. } => {
@@ -262,5 +270,19 @@ mod tests {
         TokenizerFailure::UnexpectedCharacter('🆒')
     );
 
+    tokenizer_test!(
+        allows_underscore_in_name,
+        "na_me",
+        Token::Name("na_me".into())
+    );
+
+    tokenizer_test!(allows_hyphen_in_name, "na-me", Token::Name("na-me".into()));
+    tokenizer_test!(
+        allows_digits_in_name,
+        "n12345",
+        Token::Name("n12345".into())
+    );
+
     tokenizer_test!(handles_slide_as_keyword, "slide", Token::KeywordSlide);
+    tokenizer_test!(handles_title_as_keyword, "title", Token::KeywordTitle);
 }
