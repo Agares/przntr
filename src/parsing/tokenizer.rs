@@ -1,13 +1,37 @@
 use std::iter::Peekable;
 use std::str::CharIndices;
 
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Ord, PartialOrd)]
+pub struct SourceLocation {
+    line: u32,
+    column: u32,
+}
+
+impl SourceLocation {
+    pub fn new(line: u32, column: u32) -> Self {
+        Self { line, column }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub enum TokenizerFailure {
+pub enum TokenizerFailureKind {
     UnexpectedCharacterInName { index: usize },
     UnclosedString,
     UnknownEscapeSequence(char),
     UnfinishedEscapeSequence,
     UnexpectedCharacter(char),
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub struct TokenizerFailure {
+    kind: TokenizerFailureKind,
+    location: SourceLocation,
+}
+
+impl TokenizerFailure {
+    pub fn new(location: SourceLocation, kind: TokenizerFailureKind) -> Self {
+        Self { location, kind }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -28,19 +52,19 @@ pub struct Tokenizer<'a> {
     iter: Peekable<CharIndices<'a>>,
     data: &'a str,
     is_failed: bool,
+    line: u32,
+    column: u32,
 }
 
 #[derive(Eq, PartialEq, Debug)]
 pub enum Token {
     Name(String),
-    // must be a String, not a &str to source, since strings with escape sequence will be different
-    // from the representation in source, e.g. "test\"string" will have `\"` replaced with `"`
     String(String),
     OpeningBrace,
     ClosingBrace,
     KeywordSlide,
     KeywordTitle,
-    KeywordMetadata
+    KeywordMetadata,
 }
 
 pub trait TokenStream {
@@ -53,6 +77,8 @@ impl<'a> Tokenizer<'a> {
             iter: data.char_indices().peekable(),
             data,
             is_failed: false,
+            line: 0,
+            column: 0,
         }
     }
 
@@ -68,6 +94,22 @@ impl<'a> Tokenizer<'a> {
     fn is_name_character(&self, character: char) -> bool {
         character.is_ascii_alphanumeric() || character == '_' || character == '-'
     }
+
+    fn read_next(&mut self) -> Option<(usize, char)> {
+        self.column += 1;
+        let result = self.iter.next();
+
+        if let Some((_, '\n')) = result {
+            self.line += 1;
+            self.column = 0;
+        }
+
+        result
+    }
+
+    fn current_location(&self) -> SourceLocation {
+        SourceLocation::new(self.line, self.column)
+    }
 }
 
 impl<'a> TokenStream for Tokenizer<'a> {
@@ -78,7 +120,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
 
         let mut state = TokenizerState::None;
 
-        while let Some((index, character)) = self.iter.next() {
+        while let Some((index, character)) = self.read_next() {
             match state {
                 TokenizerState::None if character.is_ascii_alphabetic() => {
                     state = TokenizerState::ReadingName { start_index: index }
@@ -92,9 +134,10 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 TokenizerState::ReadingName { .. } => {
                     self.is_failed = true;
 
-                    return TokenizerResult::Err(TokenizerFailure::UnexpectedCharacterInName {
-                        index,
-                    });
+                    return TokenizerResult::Err(TokenizerFailure::new(
+                        self.current_location(),
+                        TokenizerFailureKind::UnexpectedCharacterInName { index },
+                    ));
                 }
                 TokenizerState::None if character == '"' => {
                     state = TokenizerState::ReadingString { start_index: index }
@@ -102,18 +145,22 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 TokenizerState::ReadingString { .. } if character == '\\' => {
                     match self.iter.peek() {
                         Some((_, '\"')) => {
-                            self.iter.next();
+                            self.read_next();
                         }
                         Some((_, character)) => {
                             self.is_failed = true;
-                            return TokenizerResult::Err(TokenizerFailure::UnknownEscapeSequence(
-                                *character,
+                            let failure_kind =
+                                TokenizerFailureKind::UnknownEscapeSequence(*character);
+                            return TokenizerResult::Err(TokenizerFailure::new(
+                                self.current_location(),
+                                failure_kind,
                             ));
                         }
                         _ => {
-                            return TokenizerResult::Err(
-                                TokenizerFailure::UnfinishedEscapeSequence,
-                            );
+                            return TokenizerResult::Err(TokenizerFailure::new(
+                                self.current_location(),
+                                TokenizerFailureKind::UnfinishedEscapeSequence,
+                            ));
                         }
                     }
                 }
@@ -138,7 +185,10 @@ impl<'a> TokenStream for Tokenizer<'a> {
                             return TokenizerResult::Ok(Token::ClosingBrace);
                         }
                         c => {
-                            return TokenizerResult::Err(TokenizerFailure::UnexpectedCharacter(c));
+                            return TokenizerResult::Err(TokenizerFailure::new(
+                                self.current_location(),
+                                TokenizerFailureKind::UnexpectedCharacter(c),
+                            ));
                         }
                     }
                 }
@@ -151,7 +201,11 @@ impl<'a> TokenStream for Tokenizer<'a> {
             }
             TokenizerState::None => TokenizerResult::End,
             TokenizerState::ReadingString { .. } => {
-                TokenizerResult::Err(TokenizerFailure::UnclosedString)
+                // fixme location
+                TokenizerResult::Err(TokenizerFailure::new(
+                    self.current_location(),
+                    TokenizerFailureKind::UnclosedString,
+                ))
             }
         }
     }
@@ -209,7 +263,10 @@ mod tests {
     tokenizer_fail_test!(
         fails_on_invalid_character_in_name,
         "name\"",
-        TokenizerFailure::UnexpectedCharacterInName { index: 4 }
+        TokenizerFailure::new(
+            SourceLocation::new(0, 5),
+            TokenizerFailureKind::UnexpectedCharacterInName { index: 4 }
+        )
     );
 
     #[test]
@@ -217,7 +274,10 @@ mod tests {
         let mut tokenizer = Tokenizer::new("name\" othername");
 
         assert_eq!(
-            TokenizerResult::Err(TokenizerFailure::UnexpectedCharacterInName { index: 4 }),
+            TokenizerResult::Err(TokenizerFailure::new(
+                SourceLocation::new(0, 5),
+                TokenizerFailureKind::UnexpectedCharacterInName { index: 4 }
+            )),
             tokenizer.next()
         );
         assert_eq!(TokenizerResult::End, tokenizer.next());
@@ -232,7 +292,10 @@ mod tests {
     tokenizer_fail_test!(
         fails_on_unclosed_string,
         "\"bla",
-        TokenizerFailure::UnclosedString
+        TokenizerFailure::new(
+            SourceLocation::new(0, 5),
+            TokenizerFailureKind::UnclosedString
+        )
     );
 
     tokenizer_test!(
@@ -244,12 +307,18 @@ mod tests {
     tokenizer_fail_test!(
         fails_on_unknown_escape_sequence,
         "\"\\a",
-        TokenizerFailure::UnknownEscapeSequence('a')
+        TokenizerFailure::new(
+            SourceLocation::new(0, 2),
+            TokenizerFailureKind::UnknownEscapeSequence('a')
+        )
     );
     tokenizer_fail_test!(
         fails_on_unfinished_escape_sequence,
         "\"\\",
-        TokenizerFailure::UnfinishedEscapeSequence
+        TokenizerFailure::new(
+            SourceLocation::new(0, 2),
+            TokenizerFailureKind::UnfinishedEscapeSequence
+        )
     );
 
     tokenizer_test!(
@@ -269,7 +338,10 @@ mod tests {
     tokenizer_fail_test!(
         fails_on_unexpected_character,
         "🆒",
-        TokenizerFailure::UnexpectedCharacter('🆒')
+        TokenizerFailure::new(
+            SourceLocation::new(0, 1),
+            TokenizerFailureKind::UnexpectedCharacter('🆒')
+        )
     );
 
     tokenizer_test!(
@@ -287,5 +359,26 @@ mod tests {
 
     tokenizer_test!(handles_slide_as_keyword, "slide", Token::KeywordSlide);
     tokenizer_test!(handles_title_as_keyword, "title", Token::KeywordTitle);
-    tokenizer_test!(handles_metadata_as_keyword, "metadata", Token::KeywordMetadata);
+    tokenizer_test!(
+        handles_metadata_as_keyword,
+        "metadata",
+        Token::KeywordMetadata
+    );
+
+    tokenizer_fail_test!(
+        keeps_track_of_column,
+        "    🆒",
+        TokenizerFailure::new(
+            SourceLocation::new(0, 5),
+            TokenizerFailureKind::UnexpectedCharacter('🆒')
+        )
+    );
+    tokenizer_fail_test!(
+        keeps_track_of_line,
+        "    \n🆒",
+        TokenizerFailure::new(
+            SourceLocation::new(1, 1),
+            TokenizerFailureKind::UnexpectedCharacter('🆒')
+        )
+    );
 }

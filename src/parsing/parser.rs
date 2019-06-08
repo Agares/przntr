@@ -1,11 +1,10 @@
-use super::tokenizer::{Token, TokenStream, TokenizerResult};
-use crate::parsing::tokenizer::TokenizerFailure;
+use super::tokenizer::{Token, TokenStream, TokenizerFailure, TokenizerResult};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
     UnexpectedToken,       // todo add information about the actual/expected token
     UnexpectedEndOfStream, // todo add information about the expected token
-    TokenizerFailure(TokenizerFailure)
+    TokenizerFailure(TokenizerFailure),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -75,15 +74,15 @@ impl<'a, T: TokenStream> Parser<'a, T> {
     }
 
     pub fn parse(&mut self) -> Result<Presentation, ParserError> {
-        let mut slides:Vec<Slide> = Vec::new();
-        let mut title:String = "".into();
+        let mut slides: Vec<Slide> = Vec::new();
+        let mut title: String = "".into();
 
         match self.token_stream.peek() {
-            None => {},
-            Some(TokenizerResult::End) => {},
+            None => {}
+            Some(TokenizerResult::End) => {}
             Some(TokenizerResult::Ok(Token::KeywordSlide)) => slides.push(self.parse_slide()?),
             Some(TokenizerResult::Ok(Token::KeywordMetadata)) => title = self.parse_metadata()?,
-            Some(result) => return Self::handle_invalid_result(result)
+            Some(result) => return Self::handle_invalid_result(result),
         }
 
         Ok(Presentation::new(title, slides))
@@ -92,22 +91,22 @@ impl<'a, T: TokenStream> Parser<'a, T> {
     fn parse_slide(&mut self) -> Result<Slide, ParserError> {
         match self.token_stream.next() {
             TokenizerResult::Ok(Token::KeywordSlide) => {}
-            result => return Self::handle_invalid_result(&result)
+            result => return Self::handle_invalid_result(&result),
         }
 
         let slide_name = match self.token_stream.next() {
             TokenizerResult::Ok(Token::String(slide_name)) => Ok(slide_name),
-            result => return Self::handle_invalid_result(&result)
+            result => return Self::handle_invalid_result(&result),
         }?;
 
         match self.token_stream.next() {
             TokenizerResult::Ok(Token::OpeningBrace) => {}
-            result => return Self::handle_invalid_result(&result)
+            result => return Self::handle_invalid_result(&result),
         }
 
         match self.token_stream.next() {
             TokenizerResult::Ok(Token::ClosingBrace) => {}
-            result => return Self::handle_invalid_result(&result)
+            result => return Self::handle_invalid_result(&result),
         }
 
         Ok(Slide::new(slide_name))
@@ -115,45 +114,45 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
     fn parse_metadata(&mut self) -> Result<String, ParserError> {
         match self.token_stream.next() {
-            TokenizerResult::Ok(Token::KeywordMetadata) => {},
-            result => return Self::handle_invalid_result(&result)
+            TokenizerResult::Ok(Token::KeywordMetadata) => {}
+            result => return Self::handle_invalid_result(&result),
         }
 
         match self.token_stream.next() {
-            TokenizerResult::Ok(Token::OpeningBrace) => {},
-            result => return Self::handle_invalid_result(&result)
+            TokenizerResult::Ok(Token::OpeningBrace) => {}
+            result => return Self::handle_invalid_result(&result),
         }
 
-
         match self.token_stream.next() {
-            TokenizerResult::Ok(Token::KeywordTitle) => {},
-            result => return Self::handle_invalid_result(&result)
+            TokenizerResult::Ok(Token::KeywordTitle) => {}
+            result => return Self::handle_invalid_result(&result),
         }
 
         let title = match self.token_stream.next() {
             TokenizerResult::Ok(Token::String(title)) => title,
-            result => return Self::handle_invalid_result(&result)
+            result => return Self::handle_invalid_result(&result),
         };
 
         match self.token_stream.next() {
-            TokenizerResult::Ok(Token::ClosingBrace) => {},
-            result => return Self::handle_invalid_result(&result)
+            TokenizerResult::Ok(Token::ClosingBrace) => {}
+            result => return Self::handle_invalid_result(&result),
         };
 
         Ok(title)
     }
 
-    fn handle_invalid_result<TOk>(result:&TokenizerResult) -> Result<TOk, ParserError> {
+    fn handle_invalid_result<TOk>(result: &TokenizerResult) -> Result<TOk, ParserError> {
         Err(match result {
             TokenizerResult::Ok(_) => ParserError::UnexpectedToken,
             TokenizerResult::Err(error) => ParserError::TokenizerFailure(*error),
-            TokenizerResult::End => ParserError::UnexpectedEndOfStream
+            TokenizerResult::End => ParserError::UnexpectedEndOfStream,
         })
     }
 }
 
 #[cfg(test)]
 mod test {
+    use super::super::tokenizer::{SourceLocation, TokenizerFailureKind};
     use super::*;
     use ::std::vec::Drain;
 
@@ -272,10 +271,14 @@ mod test {
 
     parser_test_fail!(
         passes_tokenization_failure_through,
-        vec![
-            TokenizerResult::Err(TokenizerFailure::UnclosedString)
-        ],
-        ParserError::TokenizerFailure(TokenizerFailure::UnclosedString)
+        vec![TokenizerResult::Err(TokenizerFailure::new(
+            SourceLocation::new(0, 0),
+            TokenizerFailureKind::UnclosedString
+        ))],
+        ParserError::TokenizerFailure(TokenizerFailure::new(
+            SourceLocation::new(0, 0),
+            TokenizerFailureKind::UnclosedString
+        ))
     );
 
     #[test]
