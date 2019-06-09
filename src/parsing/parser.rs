@@ -66,6 +66,21 @@ pub struct Parser<'a, T: TokenStream> {
     token_stream: PeekableTokenStream<'a, T>,
 }
 
+macro_rules! consume {
+    ($self:expr, $expected:pat) => {
+        match $self.token_stream.next() {
+            TokenizerResult::Ok($expected) => {}
+            result => return Self::handle_invalid_result(&result),
+        }
+    };
+    ($self:expr, $expected:pat => $action:expr) => {
+        match $self.token_stream.next() {
+            TokenizerResult::Ok($expected) => $action,
+            result => return Self::handle_invalid_result(&result),
+        }
+    };
+}
+
 impl<'a, T: TokenStream> Parser<'a, T> {
     pub fn new(token_stream: &'a mut T) -> Self {
         Parser {
@@ -89,54 +104,20 @@ impl<'a, T: TokenStream> Parser<'a, T> {
     }
 
     fn parse_slide(&mut self) -> Result<Slide, ParserError> {
-        match self.token_stream.next() {
-            TokenizerResult::Ok(Token::KeywordSlide) => {}
-            result => return Self::handle_invalid_result(&result),
-        }
-
-        let slide_name = match self.token_stream.next() {
-            TokenizerResult::Ok(Token::String(slide_name)) => Ok(slide_name),
-            result => return Self::handle_invalid_result(&result),
-        }?;
-
-        match self.token_stream.next() {
-            TokenizerResult::Ok(Token::OpeningBrace) => {}
-            result => return Self::handle_invalid_result(&result),
-        }
-
-        match self.token_stream.next() {
-            TokenizerResult::Ok(Token::ClosingBrace) => {}
-            result => return Self::handle_invalid_result(&result),
-        }
+        consume!(self, Token::KeywordSlide);
+        let slide_name = consume!(self, Token::String(slide_name) => Ok(slide_name))?;
+        consume!(self, Token::OpeningBrace);
+        consume!(self, Token::ClosingBrace);
 
         Ok(Slide::new(slide_name))
     }
 
     fn parse_metadata(&mut self) -> Result<String, ParserError> {
-        match self.token_stream.next() {
-            TokenizerResult::Ok(Token::KeywordMetadata) => {}
-            result => return Self::handle_invalid_result(&result),
-        }
-
-        match self.token_stream.next() {
-            TokenizerResult::Ok(Token::OpeningBrace) => {}
-            result => return Self::handle_invalid_result(&result),
-        }
-
-        match self.token_stream.next() {
-            TokenizerResult::Ok(Token::KeywordTitle) => {}
-            result => return Self::handle_invalid_result(&result),
-        }
-
-        let title = match self.token_stream.next() {
-            TokenizerResult::Ok(Token::String(title)) => title,
-            result => return Self::handle_invalid_result(&result),
-        };
-
-        match self.token_stream.next() {
-            TokenizerResult::Ok(Token::ClosingBrace) => {}
-            result => return Self::handle_invalid_result(&result),
-        };
+        consume!(self, Token::KeywordMetadata);
+        consume!(self, Token::OpeningBrace);
+        consume!(self, Token::KeywordTitle);
+        let title = consume!(self, Token::String(title) => title);
+        consume!(self, Token::ClosingBrace);
 
         Ok(title)
     }
