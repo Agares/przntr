@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 use crate::parsing::parser::Parser;
 use parsing::tokenizer::Tokenizer;
 use std::fs;
