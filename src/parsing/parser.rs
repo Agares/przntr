@@ -110,7 +110,6 @@ mod test {
     };
     use super::*;
 
-    // todo refactor macros to take Token as an argument, not TokenizerResult
     macro_rules! parser_test_fail {
         ($test_name:ident, $results:expr, $expected_error:expr) => {
             #[test]
