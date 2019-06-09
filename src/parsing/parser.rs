@@ -39,13 +39,13 @@ pub struct Parser<'a, T: TokenStream> {
 macro_rules! consume {
     ($self:expr, $expected:pat) => {
         match $self.token_stream.next() {
-            TokenizerResult::Ok($expected) => {}
+            TokenizerResult::Ok($expected, _) => {}
             result => return Self::handle_invalid_result(&result),
         }
     };
     ($self:expr, $expected:pat => $action:expr) => {
         match $self.token_stream.next() {
-            TokenizerResult::Ok($expected) => $action,
+            TokenizerResult::Ok($expected, _) => $action,
             result => return Self::handle_invalid_result(&result),
         }
     };
@@ -65,8 +65,10 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         match self.token_stream.peek() {
             None => {}
             Some(TokenizerResult::End) => {}
-            Some(TokenizerResult::Ok(Token::KeywordSlide)) => slides.push(self.parse_slide()?),
-            Some(TokenizerResult::Ok(Token::KeywordMetadata)) => title = self.parse_metadata()?,
+            Some(TokenizerResult::Ok(Token::KeywordSlide, _)) => slides.push(self.parse_slide()?),
+            Some(TokenizerResult::Ok(Token::KeywordMetadata, _)) => {
+                title = self.parse_metadata()?
+            }
             Some(result) => return Self::handle_invalid_result(result),
         }
 
@@ -94,7 +96,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
     fn handle_invalid_result<TOk>(result: &TokenizerResult) -> Result<TOk, ParserError> {
         Err(match result {
-            TokenizerResult::Ok(_) => ParserError::UnexpectedToken,
+            TokenizerResult::Ok(_, _) => ParserError::UnexpectedToken,
             TokenizerResult::Err(error) => ParserError::TokenizerFailure(*error),
             TokenizerResult::End => ParserError::UnexpectedEndOfStream,
         })
@@ -103,9 +105,12 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use super::super::token_stream::{MockTokenStream, SourceLocation, TokenizerFailureKind};
+    use super::super::token_stream::{
+        MockTokenStream, SourceLocation, SourceLocationRange, TokenizerFailureKind,
+    };
     use super::*;
 
+    // todo refactor macros to take Token as an argument, not TokenizerResult
     macro_rules! parser_test_fail {
         ($test_name:ident, $results:expr, $expected_error:expr) => {
             #[test]
@@ -136,10 +141,22 @@ mod test {
     parser_test!(
         can_parse_slide_block,
         vec![
-            TokenizerResult::Ok(Token::KeywordSlide),
-            TokenizerResult::Ok(Token::String("some slide".into())),
-            TokenizerResult::Ok(Token::OpeningBrace),
-            TokenizerResult::Ok(Token::ClosingBrace),
+            TokenizerResult::Ok(
+                Token::KeywordSlide,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::String("some slide".into()),
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::OpeningBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::ClosingBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
         ],
         Presentation::new("".into(), vec![Slide::new("some slide".into())])
     );
@@ -147,11 +164,26 @@ mod test {
     parser_test!(
         can_parse_metadata_block,
         vec![
-            TokenizerResult::Ok(Token::KeywordMetadata),
-            TokenizerResult::Ok(Token::OpeningBrace),
-            TokenizerResult::Ok(Token::KeywordTitle),
-            TokenizerResult::Ok(Token::String("some title".into())),
-            TokenizerResult::Ok(Token::ClosingBrace)
+            TokenizerResult::Ok(
+                Token::KeywordMetadata,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::OpeningBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::KeywordTitle,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::String("some title".into()),
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::ClosingBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            )
         ],
         Presentation::new("some title".into(), vec![])
     );
@@ -159,10 +191,22 @@ mod test {
     parser_test_fail!(
         fails_if_block_type_is_not_slide,
         vec![
-            TokenizerResult::Ok(Token::Name("notslide".into())),
-            TokenizerResult::Ok(Token::String("some slide".into())),
-            TokenizerResult::Ok(Token::OpeningBrace),
-            TokenizerResult::Ok(Token::ClosingBrace),
+            TokenizerResult::Ok(
+                Token::Name("notslide".into()),
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::String("some slide".into()),
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::OpeningBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::ClosingBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
         ],
         ParserError::UnexpectedToken
     );
@@ -170,8 +214,14 @@ mod test {
     parser_test_fail!(
         fails_on_missing_braces,
         vec![
-            TokenizerResult::Ok(Token::KeywordSlide),
-            TokenizerResult::Ok(Token::String("some slide".into())),
+            TokenizerResult::Ok(
+                Token::KeywordSlide,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::String("some slide".into()),
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
         ],
         ParserError::UnexpectedEndOfStream
     );
@@ -179,9 +229,18 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_name,
         vec![
-            TokenizerResult::Ok(Token::KeywordSlide),
-            TokenizerResult::Ok(Token::String("some slide".into())),
-            TokenizerResult::Ok(Token::ClosingBrace)
+            TokenizerResult::Ok(
+                Token::KeywordSlide,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::String("some slide".into()),
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::ClosingBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            )
         ],
         ParserError::UnexpectedToken
     );
@@ -189,10 +248,22 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_opening_brace,
         vec![
-            TokenizerResult::Ok(Token::KeywordSlide),
-            TokenizerResult::Ok(Token::String("some slide".into())),
-            TokenizerResult::Ok(Token::OpeningBrace),
-            TokenizerResult::Ok(Token::OpeningBrace),
+            TokenizerResult::Ok(
+                Token::KeywordSlide,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::String("some slide".into()),
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::OpeningBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
+            TokenizerResult::Ok(
+                Token::OpeningBrace,
+                SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            ),
         ],
         ParserError::UnexpectedToken
     );

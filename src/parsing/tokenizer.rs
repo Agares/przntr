@@ -1,5 +1,6 @@
 use crate::parsing::token_stream::{
-    SourceLocation, Token, TokenStream, TokenizerFailure, TokenizerFailureKind, TokenizerResult,
+    SourceLocation, SourceLocationRange, Token, TokenStream, TokenizerFailure,
+    TokenizerFailureKind, TokenizerResult,
 };
 use std::iter::Peekable;
 use std::str::CharIndices;
@@ -31,12 +32,15 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn handle_name_or_keyword(&self, name: &str) -> TokenizerResult {
-        TokenizerResult::Ok(match name {
-            "slide" => Token::KeywordSlide,
-            "title" => Token::KeywordTitle,
-            "metadata" => Token::KeywordMetadata,
-            _ => Token::Name(name.into()),
-        })
+        TokenizerResult::Ok(
+            match name {
+                "slide" => Token::KeywordSlide,
+                "title" => Token::KeywordTitle,
+                "metadata" => Token::KeywordMetadata,
+                _ => Token::Name(name.into()),
+            },
+            SourceLocationRange::new_single(self.current_location()),
+        ) // fixme this should be an actual range from start to end of the name
     }
 
     fn is_name_character(&self, character: char) -> bool {
@@ -113,11 +117,14 @@ impl<'a> TokenStream for Tokenizer<'a> {
                     }
                 }
                 TokenizerState::ReadingString { start_index } if character == '"' => {
-                    return TokenizerResult::Ok(Token::String(
-                        self.data[start_index + 1..index]
-                            .to_owned()
-                            .replace("\\\"", "\""),
-                    ))
+                    return TokenizerResult::Ok(
+                        Token::String(
+                            self.data[start_index + 1..index]
+                                .to_owned()
+                                .replace("\\\"", "\""),
+                        ),
+                        SourceLocationRange::new_single(self.current_location()),
+                    ); // fixme this should be a range from start to end of the string
                 }
                 TokenizerState::ReadingString { .. } => {}
                 TokenizerState::None => {
@@ -127,10 +134,16 @@ impl<'a> TokenStream for Tokenizer<'a> {
 
                     match character {
                         '{' => {
-                            return TokenizerResult::Ok(Token::OpeningBrace);
+                            return TokenizerResult::Ok(
+                                Token::OpeningBrace,
+                                SourceLocationRange::new_single(self.current_location()),
+                            );
                         }
                         '}' => {
-                            return TokenizerResult::Ok(Token::ClosingBrace);
+                            return TokenizerResult::Ok(
+                                Token::ClosingBrace,
+                                SourceLocationRange::new_single(self.current_location()),
+                            );
                         }
                         c => {
                             return TokenizerResult::Err(TokenizerFailure::new(
@@ -148,12 +161,10 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 self.handle_name_or_keyword(&self.data[start_index..])
             }
             TokenizerState::None => TokenizerResult::End,
-            TokenizerState::ReadingString { .. } => {
-                TokenizerResult::Err(TokenizerFailure::new(
-                    self.current_location(),
-                    TokenizerFailureKind::UnclosedString,
-                ))
-            }
+            TokenizerState::ReadingString { .. } => TokenizerResult::Err(TokenizerFailure::new(
+                self.current_location(),
+                TokenizerFailureKind::UnclosedString,
+            )),
         }
     }
 }
@@ -169,7 +180,12 @@ mod tests {
                 let mut tokenizer = Tokenizer::new($test_string);
 
                 $(
-                    assert_eq!(TokenizerResult::Ok($expected_token), tokenizer.next());
+                    // todo clean up this if
+                    if let TokenizerResult::Ok(token, _) = tokenizer.next() {
+                        assert_eq!(token, $expected_token);
+                    } else {
+                        panic!();
+                    }
                 )*
 
                 assert_eq!(TokenizerResult::End, tokenizer.next());
