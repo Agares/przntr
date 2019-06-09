@@ -115,11 +115,20 @@ mod test {
         ($test_name:ident, $results:expr, $expected_error:expr) => {
             #[test]
             pub fn $test_name() {
-                let mut tokens = $results;
+                let mut tokens = $results
+                    .drain(..)
+                    .map(|token| {
+                        TokenizerResult::Ok(
+                            token,
+                            SourceLocationRange::new_single(SourceLocation::new(0, 0)),
+                        )
+                    })
+                    .collect();
                 let mut stream = MockTokenStream::new(&mut tokens);
                 let mut parser = Parser::new(&mut stream);
 
-                assert_eq!(parser.parse(), Err($expected_error));
+                let error: ParserError = $expected_error;
+                assert_eq!(parser.parse(), Err(error));
             }
         };
     }
@@ -128,7 +137,15 @@ mod test {
         ($test_name:ident, $results:expr, $expected_presentation:expr) => {
             #[test]
             pub fn $test_name() {
-                let mut tokens = $results;
+                let mut tokens = $results
+                    .drain(..)
+                    .map(|token| {
+                        TokenizerResult::Ok(
+                            token,
+                            SourceLocationRange::new_single(SourceLocation::new(0, 0)),
+                        )
+                    })
+                    .collect();
                 let mut stream = MockTokenStream::new(&mut tokens);
                 let mut parser = Parser::new(&mut stream);
 
@@ -141,22 +158,10 @@ mod test {
     parser_test!(
         can_parse_slide_block,
         vec![
-            TokenizerResult::Ok(
-                Token::KeywordSlide,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::String("some slide".into()),
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::OpeningBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::ClosingBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
+            Token::KeywordSlide,
+            Token::String("some slide".into()),
+            Token::OpeningBrace,
+            Token::ClosingBrace,
         ],
         Presentation::new("".into(), vec![Slide::new("some slide".into())])
     );
@@ -164,26 +169,11 @@ mod test {
     parser_test!(
         can_parse_metadata_block,
         vec![
-            TokenizerResult::Ok(
-                Token::KeywordMetadata,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::OpeningBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::KeywordTitle,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::String("some title".into()),
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::ClosingBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            )
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
         ],
         Presentation::new("some title".into(), vec![])
     );
@@ -191,56 +181,26 @@ mod test {
     parser_test_fail!(
         fails_if_block_type_is_not_slide,
         vec![
-            TokenizerResult::Ok(
-                Token::Name("notslide".into()),
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::String("some slide".into()),
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::OpeningBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::ClosingBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
+            Token::Name("notslide".into()),
+            Token::String("some slide".into()),
+            Token::OpeningBrace,
+            Token::ClosingBrace,
         ],
         ParserError::UnexpectedToken
     );
 
     parser_test_fail!(
         fails_on_missing_braces,
-        vec![
-            TokenizerResult::Ok(
-                Token::KeywordSlide,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::String("some slide".into()),
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-        ],
+        vec![Token::KeywordSlide, Token::String("some slide".into()),],
         ParserError::UnexpectedEndOfStream
     );
 
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_name,
         vec![
-            TokenizerResult::Ok(
-                Token::KeywordSlide,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::String("some slide".into()),
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::ClosingBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            )
+            Token::KeywordSlide,
+            Token::String("some slide".into()),
+            Token::ClosingBrace,
         ],
         ParserError::UnexpectedToken
     );
@@ -248,35 +208,29 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_opening_brace,
         vec![
-            TokenizerResult::Ok(
-                Token::KeywordSlide,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::String("some slide".into()),
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::OpeningBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
-            TokenizerResult::Ok(
-                Token::OpeningBrace,
-                SourceLocationRange::new_single(SourceLocation::new(0, 0))
-            ),
+            Token::KeywordSlide,
+            Token::String("some slide".into()),
+            Token::OpeningBrace,
+            Token::OpeningBrace,
         ],
         ParserError::UnexpectedToken
     );
 
-    parser_test_fail!(
-        passes_tokenization_failure_through,
-        vec![TokenizerResult::Err(TokenizerFailure::new(
+    #[test]
+    pub fn passes_tokenization_failure_through() {
+        let mut results = vec![TokenizerResult::Err(TokenizerFailure::new(
             SourceLocation::new(0, 0),
-            TokenizerFailureKind::UnclosedString
-        ))],
-        ParserError::TokenizerFailure(TokenizerFailure::new(
-            SourceLocation::new(0, 0),
-            TokenizerFailureKind::UnclosedString
-        ))
-    );
+            TokenizerFailureKind::UnclosedString,
+        ))];
+        let mut stream = MockTokenStream::new(&mut results);
+        let mut parser = Parser::new(&mut stream);
+
+        assert_eq!(
+            parser.parse(),
+            Err(ParserError::TokenizerFailure(TokenizerFailure::new(
+                SourceLocation::new(0, 0),
+                TokenizerFailureKind::UnclosedString
+            )))
+        );
+    }
 }
