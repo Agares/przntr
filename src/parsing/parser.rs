@@ -4,7 +4,7 @@ use super::token_stream::{
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
-    UnexpectedToken,       // todo add information about the actual/expected token
+    UnexpectedToken { actual: String, expected: String },
     UnexpectedEndOfStream, // todo add information about the expected token
     TokenizerFailure(TokenizerFailure),
 }
@@ -40,13 +40,23 @@ macro_rules! consume {
     ($self:expr, $expected:pat) => {
         match $self.token_stream.next() {
             TokenizerResult::Ok($expected, _) => {}
-            result => return Self::handle_invalid_result(&result),
+            result => {
+                return Self::handle_invalid_result(
+                    &result,
+                    stringify!($expected).to_string().replace("Token::", ""),
+                )
+            }
         }
     };
     ($self:expr, $expected:pat => $action:expr) => {
         match $self.token_stream.next() {
             TokenizerResult::Ok($expected, _) => $action,
-            result => return Self::handle_invalid_result(&result),
+            result => {
+                return Self::handle_invalid_result(
+                    &result,
+                    stringify!($expected).to_string().replace("Token::", ""),
+                )
+            }
         }
     };
 }
@@ -69,7 +79,12 @@ impl<'a, T: TokenStream> Parser<'a, T> {
             Some(TokenizerResult::Ok(Token::KeywordMetadata, _)) => {
                 title = self.parse_metadata()?
             }
-            Some(result) => return Self::handle_invalid_result(result),
+            Some(result) => {
+                return Self::handle_invalid_result(
+                    result,
+                    "KeywordSlide or KeywordMetadata".into(),
+                )
+            }
         }
 
         Ok(Presentation::new(title, slides))
@@ -94,9 +109,15 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         Ok(title)
     }
 
-    fn handle_invalid_result<TOk>(result: &TokenizerResult) -> Result<TOk, ParserError> {
+    fn handle_invalid_result<TOk>(
+        result: &TokenizerResult,
+        expected: String,
+    ) -> Result<TOk, ParserError> {
         Err(match result {
-            TokenizerResult::Ok(_, _) => ParserError::UnexpectedToken,
+            TokenizerResult::Ok(token, _) => ParserError::UnexpectedToken {
+                actual: format!("{:?}", token),
+                expected,
+            },
             TokenizerResult::Err(error) => ParserError::TokenizerFailure(*error),
             TokenizerResult::End => ParserError::UnexpectedEndOfStream,
         })
@@ -185,7 +206,10 @@ mod test {
             Token::OpeningBrace,
             Token::ClosingBrace,
         ],
-        ParserError::UnexpectedToken
+        ParserError::UnexpectedToken {
+            actual: "Name(\"notslide\")".into(),
+            expected: "KeywordSlide or KeywordMetadata".into()
+        }
     );
 
     parser_test_fail!(
@@ -201,7 +225,10 @@ mod test {
             Token::String("some slide".into()),
             Token::ClosingBrace,
         ],
-        ParserError::UnexpectedToken
+        ParserError::UnexpectedToken {
+            actual: "ClosingBrace".into(),
+            expected: "OpeningBrace".into()
+        }
     );
 
     parser_test_fail!(
@@ -212,7 +239,10 @@ mod test {
             Token::OpeningBrace,
             Token::OpeningBrace,
         ],
-        ParserError::UnexpectedToken
+        ParserError::UnexpectedToken {
+            actual: "OpeningBrace".into(),
+            expected: "ClosingBrace".into()
+        }
     );
 
     #[test]
