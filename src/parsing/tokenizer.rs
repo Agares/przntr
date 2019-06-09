@@ -149,7 +149,6 @@ impl<'a> TokenStream for Tokenizer<'a> {
             }
             TokenizerState::None => TokenizerResult::End,
             TokenizerState::ReadingString { .. } => {
-                // fixme location
                 TokenizerResult::Err(TokenizerFailure::new(
                     self.current_location(),
                     TokenizerFailureKind::UnclosedString,
