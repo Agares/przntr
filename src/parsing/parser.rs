@@ -5,7 +5,7 @@ use super::token_stream::{
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
     UnexpectedToken { actual: String, expected: String },
-    UnexpectedEndOfStream, // todo add information about the expected token
+    UnexpectedEndOfStream { expected: String },
     TokenizerFailure(TokenizerFailure),
 }
 
@@ -119,7 +119,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
                 expected,
             },
             TokenizerResult::Err(error) => ParserError::TokenizerFailure(*error),
-            TokenizerResult::End => ParserError::UnexpectedEndOfStream,
+            TokenizerResult::End => ParserError::UnexpectedEndOfStream { expected },
         })
     }
 }
@@ -215,7 +215,9 @@ mod test {
     parser_test_fail!(
         fails_on_missing_braces,
         vec![Token::KeywordSlide, Token::String("some slide".into()),],
-        ParserError::UnexpectedEndOfStream
+        ParserError::UnexpectedEndOfStream {
+            expected: "OpeningBrace".into()
+        }
     );
 
     parser_test_fail!(
