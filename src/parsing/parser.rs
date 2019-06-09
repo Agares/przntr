@@ -16,7 +16,7 @@ pub struct Slide {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Presentation {
-    title: String,
+    name: String,
     slides: Vec<Slide>,
 }
 
@@ -27,8 +27,8 @@ impl Slide {
 }
 
 impl Presentation {
-    pub fn new(title: String, slides: Vec<Slide>) -> Self {
-        Presentation { title, slides }
+    pub fn new(name: String, slides: Vec<Slide>) -> Self {
+        Presentation { name, slides }
     }
 }
 
@@ -70,20 +70,20 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
     pub fn parse(&mut self) -> Result<Presentation, ParserError> {
         let mut slides: Vec<Slide> = Vec::new();
-        let mut title: String = "".into();
+        let title: String = self.parse_metadata()?;
 
-        match self.token_stream.peek() {
-            None => {}
-            Some(TokenizerResult::End) => {}
-            Some(TokenizerResult::Ok(Token::KeywordSlide, _)) => slides.push(self.parse_slide()?),
-            Some(TokenizerResult::Ok(Token::KeywordMetadata, _)) => {
-                title = self.parse_metadata()?
-            }
-            Some(result) => {
-                return Self::handle_invalid_result(
-                    result,
-                    "KeywordSlide or KeywordMetadata".into(),
-                )
+        loop {
+            match self.token_stream.peek() {
+                Some(TokenizerResult::End) | None => break,
+                Some(TokenizerResult::Ok(Token::KeywordSlide, _)) => {
+                    slides.push(self.parse_slide()?)
+                }
+                Some(result) => {
+                    return Self::handle_invalid_result(
+                        result,
+                        "KeywordSlide or KeywordMetadata".into(),
+                    )
+                }
             }
         }
 
@@ -174,16 +174,18 @@ mod test {
         };
     }
 
-    // todo are presentations without metadata allowed?
-    parser_test!(
-        can_parse_slide_block,
+    parser_test_fail!(
+        fails_on_slide_before_metadata,
         vec![
             Token::KeywordSlide,
             Token::String("some slide".into()),
             Token::OpeningBrace,
             Token::ClosingBrace,
         ],
-        Presentation::new("".into(), vec![Slide::new("some slide".into())])
+        ParserError::UnexpectedToken {
+            actual: "KeywordSlide".into(),
+            expected: "KeywordMetadata".into()
+        }
     );
 
     parser_test!(
@@ -198,9 +200,30 @@ mod test {
         Presentation::new("some title".into(), vec![])
     );
 
+    parser_test!(
+        can_parse_slide_after_metadata,
+        vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
+            Token::KeywordSlide,
+            Token::String("first slide".into()),
+            Token::OpeningBrace,
+            Token::ClosingBrace
+        ],
+        Presentation::new("some title".into(), vec![Slide::new("first slide".into())])
+    );
+
     parser_test_fail!(
         fails_if_block_type_is_not_slide,
         vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
             Token::Name("notslide".into()),
             Token::String("some slide".into()),
             Token::OpeningBrace,
@@ -214,7 +237,15 @@ mod test {
 
     parser_test_fail!(
         fails_on_missing_braces,
-        vec![Token::KeywordSlide, Token::String("some slide".into()),],
+        vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
+            Token::KeywordSlide,
+            Token::String("some slide".into()),
+        ],
         ParserError::UnexpectedEndOfStream {
             expected: "OpeningBrace".into()
         }
@@ -223,6 +254,11 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_name,
         vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
             Token::KeywordSlide,
             Token::String("some slide".into()),
             Token::ClosingBrace,
@@ -236,6 +272,11 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_opening_brace,
         vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
             Token::KeywordSlide,
             Token::String("some slide".into()),
             Token::OpeningBrace,
