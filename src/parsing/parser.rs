@@ -1,4 +1,6 @@
-use super::tokenizer::{Token, TokenStream, TokenizerFailure, TokenizerResult};
+use super::token_stream::{
+    PeekableTokenStream, Token, TokenStream, TokenizerFailure, TokenizerResult,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
@@ -27,38 +29,6 @@ impl Slide {
 impl Presentation {
     pub fn new(title: String, slides: Vec<Slide>) -> Self {
         Presentation { title, slides }
-    }
-}
-
-struct PeekableTokenStream<'a, T: TokenStream> {
-    token_stream: &'a mut T,
-    peeked: Option<TokenizerResult>,
-}
-
-impl<'a, T: TokenStream> PeekableTokenStream<'a, T> {
-    pub fn new(token_stream: &'a mut T) -> Self {
-        PeekableTokenStream {
-            token_stream,
-            peeked: None,
-        }
-    }
-
-    pub fn peek(&mut self) -> Option<&TokenizerResult> {
-        self.peeked = Some(self.next());
-
-        self.peeked.as_ref()
-    }
-}
-
-impl<'a, T: TokenStream> TokenStream for PeekableTokenStream<'a, T> {
-    fn next(&mut self) -> TokenizerResult {
-        match self.peeked.take() {
-            Some(p) => {
-                self.peeked = None;
-                p
-            }
-            None => self.token_stream.next(),
-        }
     }
 }
 
@@ -133,31 +103,8 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use super::super::tokenizer::{SourceLocation, TokenizerFailureKind};
+    use super::super::token_stream::{MockTokenStream, SourceLocation, TokenizerFailureKind};
     use super::*;
-    use ::std::vec::Drain;
-
-    struct MockTokenStream<'a> {
-        iter: Drain<'a, TokenizerResult>,
-    }
-
-    impl<'a> MockTokenStream<'a> {
-        pub fn new(results: &'a mut Vec<TokenizerResult>) -> Self {
-            MockTokenStream {
-                iter: results.drain(..),
-            }
-        }
-    }
-
-    impl<'a> TokenStream for MockTokenStream<'a> {
-        fn next(&mut self) -> TokenizerResult {
-            if let Some(x) = self.iter.next() {
-                x
-            } else {
-                TokenizerResult::End
-            }
-        }
-    }
 
     macro_rules! parser_test_fail {
         ($test_name:ident, $results:expr, $expected_error:expr) => {
@@ -261,53 +208,4 @@ mod test {
             TokenizerFailureKind::UnclosedString
         ))
     );
-
-    #[test]
-    pub fn without_peeking_returns_the_stream_verbatim() {
-        let mut tokens = vec![
-            TokenizerResult::Ok(Token::KeywordSlide),
-            TokenizerResult::Ok(Token::String("some slide".into())),
-            TokenizerResult::Ok(Token::OpeningBrace),
-            TokenizerResult::Ok(Token::ClosingBrace),
-        ];
-        let mut stream = MockTokenStream::new(&mut tokens);
-        let mut peekable_stream = PeekableTokenStream::new(&mut stream);
-
-        assert_eq!(
-            TokenizerResult::Ok(Token::KeywordSlide),
-            peekable_stream.next()
-        );
-        assert_eq!(
-            TokenizerResult::Ok(Token::String("some slide".into())),
-            peekable_stream.next()
-        );
-        assert_eq!(
-            TokenizerResult::Ok(Token::OpeningBrace),
-            peekable_stream.next()
-        );
-        assert_eq!(
-            TokenizerResult::Ok(Token::ClosingBrace),
-            peekable_stream.next()
-        );
-    }
-
-    #[test]
-    pub fn returns_the_same_token_on_next_after_peek() {
-        let mut tokens = vec![
-            TokenizerResult::Ok(Token::OpeningBrace),
-            TokenizerResult::Ok(Token::ClosingBrace),
-        ];
-
-        let mut stream = MockTokenStream::new(&mut tokens);
-        let mut peekable_stream = PeekableTokenStream::new(&mut stream);
-
-        assert_eq!(
-            &TokenizerResult::Ok(Token::OpeningBrace),
-            peekable_stream.peek().unwrap()
-        );
-        assert_eq!(
-            TokenizerResult::Ok(Token::OpeningBrace),
-            peekable_stream.next()
-        );
-    }
 }

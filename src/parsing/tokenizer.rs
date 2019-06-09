@@ -1,45 +1,8 @@
+use crate::parsing::token_stream::{
+    SourceLocation, Token, TokenStream, TokenizerFailure, TokenizerFailureKind, TokenizerResult,
+};
 use std::iter::Peekable;
 use std::str::CharIndices;
-
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Ord, PartialOrd)]
-pub struct SourceLocation {
-    line: u32,
-    column: u32,
-}
-
-impl SourceLocation {
-    pub fn new(line: u32, column: u32) -> Self {
-        Self { line, column }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub enum TokenizerFailureKind {
-    UnexpectedCharacterInName { index: usize },
-    UnclosedString,
-    UnknownEscapeSequence(char),
-    UnfinishedEscapeSequence,
-    UnexpectedCharacter(char),
-}
-
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub struct TokenizerFailure {
-    kind: TokenizerFailureKind,
-    location: SourceLocation,
-}
-
-impl TokenizerFailure {
-    pub fn new(location: SourceLocation, kind: TokenizerFailureKind) -> Self {
-        Self { location, kind }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum TokenizerResult {
-    Ok(Token),
-    Err(TokenizerFailure),
-    End,
-}
 
 #[derive(Eq, PartialEq, Debug)]
 enum TokenizerState {
@@ -54,21 +17,6 @@ pub struct Tokenizer<'a> {
     is_failed: bool,
     line: u32,
     column: u32,
-}
-
-#[derive(Eq, PartialEq, Debug)]
-pub enum Token {
-    Name(String),
-    String(String),
-    OpeningBrace,
-    ClosingBrace,
-    KeywordSlide,
-    KeywordTitle,
-    KeywordMetadata,
-}
-
-pub trait TokenStream {
-    fn next(&mut self) -> TokenizerResult;
 }
 
 impl<'a> Tokenizer<'a> {
