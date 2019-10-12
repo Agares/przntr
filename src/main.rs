@@ -11,6 +11,8 @@ use sdl2::render::Texture;
 use sdl2::rect::Point;
 
 mod parsing;
+mod rendering;
+mod presentation;
 
 fn main() {
     let mut args = std::env::args();
@@ -40,7 +42,7 @@ fn main() {
     let window_center = Point::new((canvas.window().size().0 / 2) as i32, (canvas.window().size().1 / 2) as i32);
 
     let txt = font.render("test").blended(Color::RGB(0xff, 0x18, 0x85)).unwrap();
-    let mut txt_rect = txt.rect();
+    let txt_rect = txt.rect();
     let mut dst_txt_rect = txt_rect.clone();
     dst_txt_rect.center_on(window_center);
     let texture_creator = canvas.texture_creator();
@@ -51,9 +53,6 @@ fn main() {
     canvas.present();
 
     let mut event_pump = sdl_context.event_pump().unwrap();
-
-    println!("txt rect: {:?}", txt_rect);
-    println!("window_center: {:?}", window_center);
 
     'running: loop {
         canvas.clear();
@@ -73,7 +72,7 @@ fn main() {
             }
         }
 
-        canvas.copy(&texture, txt_rect, dst_txt_rect);
+        canvas.copy(&texture, txt_rect, dst_txt_rect).unwrap();
         canvas.present();
 
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));

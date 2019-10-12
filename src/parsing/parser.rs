@@ -1,35 +1,13 @@
 use super::token_stream::{
     PeekableTokenStream, Token, TokenStream, TokenizerFailure, TokenizerResult,
 };
+use crate::presentation::{Presentation, Slide};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
     UnexpectedToken { actual: String, expected: String },
     UnexpectedEndOfStream { expected: String },
     TokenizerFailure(TokenizerFailure),
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct Slide {
-    name: String,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct Presentation {
-    name: String,
-    slides: Vec<Slide>,
-}
-
-impl Slide {
-    pub fn new(name: String) -> Self {
-        Slide { name }
-    }
-}
-
-impl Presentation {
-    pub fn new(name: String, slides: Vec<Slide>) -> Self {
-        Presentation { name, slides }
-    }
 }
 
 pub struct Parser<'a, T: TokenStream> {
