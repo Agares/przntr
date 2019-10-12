@@ -31,11 +31,18 @@ impl SourceLocationRange {
 pub enum Token {
     Name(String),
     String(String),
+    Integer(i128),
     OpeningBrace,
     ClosingBrace,
+    Comma,
     KeywordSlide,
     KeywordTitle,
     KeywordMetadata,
+    KeywordStyle,
+    KeywordFont,
+    KeywordPath,
+    KeywordName,
+    KeywordWeight,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -51,7 +58,7 @@ pub trait TokenStream {
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum TokenizerFailureKind {
-    UnexpectedCharacterInName { index: usize },
+    UnexpectedCharacterInName { index: usize, character: char },
     UnclosedString,
     UnknownEscapeSequence(char),
     UnfinishedEscapeSequence,
@@ -95,6 +102,7 @@ impl<'a, T: TokenStream> TokenStream for PeekableTokenStream<'a, T> {
         match self.peeked.take() {
             Some(p) => {
                 self.peeked = None;
+
                 p
             }
             None => self.token_stream.next(),

@@ -10,6 +10,7 @@ enum TokenizerState {
     None,
     ReadingName { start_index: usize },
     ReadingString { start_index: usize },
+    ReadingNumber { start_index: usize },
 }
 
 pub struct Tokenizer<'a> {
@@ -37,6 +38,11 @@ impl<'a> Tokenizer<'a> {
                 "slide" => Token::KeywordSlide,
                 "title" => Token::KeywordTitle,
                 "metadata" => Token::KeywordMetadata,
+                "style" => Token::KeywordStyle,
+                "font" => Token::KeywordFont,
+                "name" => Token::KeywordName,
+                "path" => Token::KeywordPath,
+                "weight" => Token::KeywordWeight,
                 _ => Token::Name(name.into()),
             },
             SourceLocationRange::new_single(self.current_location()),
@@ -59,6 +65,18 @@ impl<'a> Tokenizer<'a> {
         result
     }
 
+    fn peek(&mut self) -> Option<&(usize, char)> {
+        self.iter.peek()
+    }
+
+    fn check_next(&mut self, what: char) -> bool {
+        if let Some((_, x)) = self.peek() {
+            *x == what
+        } else {
+            false
+        }
+    }
+
     fn current_location(&self) -> SourceLocation {
         SourceLocation::new(self.line, self.column)
     }
@@ -75,21 +93,33 @@ impl<'a> TokenStream for Tokenizer<'a> {
         while let Some((index, character)) = self.read_next() {
             match state {
                 TokenizerState::None if character.is_ascii_alphabetic() => {
-                    state = TokenizerState::ReadingName { start_index: index }
-                }
-                TokenizerState::ReadingName { .. } if self.is_name_character(character) => {}
-                TokenizerState::ReadingName { start_index }
-                    if (character.is_ascii_whitespace()) =>
-                {
-                    return self.handle_name_or_keyword(&self.data[start_index..index]);
-                }
-                TokenizerState::ReadingName { .. } => {
-                    self.is_failed = true;
+                    state = TokenizerState::ReadingName { start_index: index };
 
-                    return TokenizerResult::Err(TokenizerFailure::new(
-                        self.current_location(),
-                        TokenizerFailureKind::UnexpectedCharacterInName { index },
-                    ));
+                    if self.check_next(',') {
+                        return self.handle_name_or_keyword(&self.data[index..=index]);
+                    }
+                }
+                TokenizerState::ReadingName { start_index } => {
+                    let is_next_character_a_comma = self.check_next(',');
+
+                    if self.is_name_character(character) && !is_next_character_a_comma {
+                        continue;
+                    }
+
+                    if character.is_ascii_whitespace() || is_next_character_a_comma {
+                        let actual_index = if is_next_character_a_comma { 1 } else { 0 } + index;
+
+                        return self.handle_name_or_keyword(&self.data[start_index..actual_index]);
+                    } else {
+                        self.is_failed = true;
+
+                        println!("Failure! {:?}", state);
+
+                        return TokenizerResult::Err(TokenizerFailure::new(
+                            self.current_location(),
+                            TokenizerFailureKind::UnexpectedCharacterInName { index, character },
+                        ));
+                    }
                 }
                 TokenizerState::None if character == '"' => {
                     state = TokenizerState::ReadingString { start_index: index }
@@ -127,6 +157,27 @@ impl<'a> TokenStream for Tokenizer<'a> {
                     ); // fixme this should be a range from start to end of the string
                 }
                 TokenizerState::ReadingString { .. } => {}
+                TokenizerState::None if character.is_ascii_digit() || character == '-' => {
+                    state = TokenizerState::ReadingNumber { start_index: index }
+                }
+                TokenizerState::ReadingNumber { start_index } => {
+                    match self.peek() {
+                        None => {
+                            return TokenizerResult::Ok(
+                                Token::Integer(self.data[start_index..=index].parse().unwrap()), // todo do not unwrap, return error in case of a failure
+                                SourceLocationRange::new_single(self.current_location()), // todo make this a range
+                            )
+                        } // fixme this is actually reachable
+                        Some((_, next_character)) => {
+                            if !next_character.is_ascii_digit() {
+                                return TokenizerResult::Ok(
+                                    Token::Integer(self.data[start_index..=index].parse().unwrap()), // todo do not unwrap, return error in case of a failure
+                                    SourceLocationRange::new_single(self.current_location()), // todo make this a range
+                                );
+                            }
+                        }
+                    }
+                }
                 TokenizerState::None => {
                     if character.is_ascii_whitespace() {
                         continue;
@@ -144,6 +195,12 @@ impl<'a> TokenStream for Tokenizer<'a> {
                                 Token::ClosingBrace,
                                 SourceLocationRange::new_single(self.current_location()),
                             );
+                        }
+                        ',' => {
+                            return TokenizerResult::Ok(
+                                Token::Comma,
+                                SourceLocationRange::new_single(self.current_location()),
+                            )
                         }
                         c => {
                             return TokenizerResult::Err(TokenizerFailure::new(
@@ -165,6 +222,12 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 self.current_location(),
                 TokenizerFailureKind::UnclosedString,
             )),
+            TokenizerState::ReadingNumber { start_index } => {
+                TokenizerResult::Ok(
+                    Token::Integer(self.data[start_index..].parse().unwrap()), // todo do not unwrap, return error in case of a failure
+                    SourceLocationRange::new_single(self.current_location()), // todo make this a range
+                )
+            }
         }
     }
 }
@@ -180,11 +243,12 @@ mod tests {
                 let mut tokenizer = Tokenizer::new($test_string);
 
                 $(
-                    // todo clean up this if
-                    if let TokenizerResult::Ok(token, _) = tokenizer.next() {
+                    let result = tokenizer.next();
+
+                    if let TokenizerResult::Ok(token, _) = result {
                         assert_eq!(token, $expected_token);
                     } else {
-                        panic!();
+                        panic!(format!("Unexpected result: {:?}", result));
                     }
                 )*
 
@@ -228,7 +292,10 @@ mod tests {
         "name\"",
         TokenizerFailure::new(
             SourceLocation::new(0, 5),
-            TokenizerFailureKind::UnexpectedCharacterInName { index: 4 }
+            TokenizerFailureKind::UnexpectedCharacterInName {
+                index: 4,
+                character: '\"'
+            }
         )
     );
 
@@ -239,7 +306,10 @@ mod tests {
         assert_eq!(
             TokenizerResult::Err(TokenizerFailure::new(
                 SourceLocation::new(0, 5),
-                TokenizerFailureKind::UnexpectedCharacterInName { index: 4 }
+                TokenizerFailureKind::UnexpectedCharacterInName {
+                    index: 4,
+                    character: '\"'
+                }
             )),
             tokenizer.next()
         );
@@ -322,6 +392,11 @@ mod tests {
 
     tokenizer_test!(handles_slide_as_keyword, "slide", Token::KeywordSlide);
     tokenizer_test!(handles_title_as_keyword, "title", Token::KeywordTitle);
+    tokenizer_test!(handles_style_as_keyword, "style", Token::KeywordStyle);
+    tokenizer_test!(handles_font_as_keyword, "font", Token::KeywordFont);
+    tokenizer_test!(handles_path_as_keyword, "path", Token::KeywordPath);
+    tokenizer_test!(handles_name_as_keyword, "name", Token::KeywordName);
+    tokenizer_test!(handles_weight_as_keyword, "weight", Token::KeywordWeight);
     tokenizer_test!(
         handles_metadata_as_keyword,
         "metadata",
@@ -343,5 +418,79 @@ mod tests {
             SourceLocation::new(1, 1),
             TokenizerFailureKind::UnexpectedCharacter('🆒')
         )
+    );
+
+    tokenizer_test!(
+        can_handle_commas_between_names,
+        "aa,bb,cc",
+        Token::Name("aa".into()),
+        Token::Comma,
+        Token::Name("bb".into()),
+        Token::Comma,
+        Token::Name("cc".into())
+    );
+    tokenizer_test!(
+        can_handle_commas_with_single_letter_names,
+        "a,b,c",
+        Token::Name("a".into()),
+        Token::Comma,
+        Token::Name("b".into()),
+        Token::Comma,
+        Token::Name("c".into())
+    );
+    tokenizer_test!(
+        can_handle_comma_between_strings,
+        "\"a\",\"b\"",
+        Token::String("a".into()),
+        Token::Comma,
+        Token::String("b".into())
+    );
+    tokenizer_test!(
+        can_handle_comma_between_string_and_name,
+        "\"a\",b",
+        Token::String("a".into()),
+        Token::Comma,
+        Token::Name("b".into())
+    );
+    tokenizer_test!(
+        can_handle_comma_between_name_and_string,
+        "a,\"b\"",
+        Token::Name("a".into()),
+        Token::Comma,
+        Token::String("b".into())
+    );
+    tokenizer_test!(
+        can_handle_positive_integers,
+        "123456789",
+        Token::Integer(123456789)
+    );
+    tokenizer_test!(can_handle_negative_integers, "-123", Token::Integer(-123));
+
+    tokenizer_test!(
+        can_handle_name_followed_by_integer,
+        "aaa 123",
+        Token::Name("aaa".into()),
+        Token::Integer(123)
+    );
+
+    tokenizer_test!(
+        can_handle_integer_followed_by_a_name,
+        "123 aaa",
+        Token::Integer(123),
+        Token::Name("aaa".into())
+    );
+
+    tokenizer_test!(
+        can_handle_name_followed_by_a_comma,
+        "aaa,",
+        Token::Name("aaa".into()),
+        Token::Comma
+    );
+
+    tokenizer_test!(
+        can_handle_integer_followed_by_a_comma,
+        "1234,",
+        Token::Integer(1234),
+        Token::Comma
     );
 }

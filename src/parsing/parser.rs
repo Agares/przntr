@@ -1,7 +1,8 @@
 use super::token_stream::{
     PeekableTokenStream, Token, TokenStream, TokenizerFailure, TokenizerResult,
 };
-use crate::presentation::{Presentation, Slide};
+use crate::presentation::{Font, Presentation, Slide, Style};
+use std::string::ParseError;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
@@ -48,6 +49,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
     pub fn parse(&mut self) -> Result<Presentation, ParserError> {
         let mut slides: Vec<Slide> = Vec::new();
+        let mut style = None;
         let title: String = self.parse_metadata()?;
 
         loop {
@@ -55,6 +57,9 @@ impl<'a, T: TokenStream> Parser<'a, T> {
                 Some(TokenizerResult::End) | None => break,
                 Some(TokenizerResult::Ok(Token::KeywordSlide, _)) => {
                     slides.push(self.parse_slide()?)
+                }
+                Some(TokenizerResult::Ok(Token::KeywordStyle, _)) => {
+                    style = Some(self.parse_style()?);
                 }
                 Some(result) => {
                     return Self::handle_invalid_result(
@@ -65,7 +70,11 @@ impl<'a, T: TokenStream> Parser<'a, T> {
             }
         }
 
-        Ok(Presentation::new(title, slides))
+        Ok(Presentation::new(
+            title,
+            slides,
+            style.unwrap_or(Style::new(vec![])),
+        ))
     }
 
     fn parse_slide(&mut self) -> Result<Slide, ParserError> {
@@ -85,6 +94,63 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         consume!(self, Token::ClosingBrace);
 
         Ok(title)
+    }
+
+    fn parse_style(&mut self) -> Result<Style, ParserError> {
+        let mut fonts: Vec<Font> = vec![];
+
+        consume!(self, Token::KeywordStyle);
+        consume!(self, Token::OpeningBrace);
+
+        match self.token_stream.peek() {
+            Some(TokenizerResult::Ok(Token::KeywordFont, _)) => {
+                fonts.push(self.parse_font()?);
+            }
+            Some(result) => return Self::handle_invalid_result(result, "KeywordFont".into()),
+            None => unreachable!(), // todo verify unreachability and consider adding an actual message
+        }
+
+        consume!(self, Token::ClosingBrace);
+
+        Ok(Style::new(fonts))
+    }
+
+    fn parse_font(&mut self) -> Result<Font, ParserError> {
+        let mut italic = false;
+        let mut name: Option<String> = None;
+        let mut path: Option<String> = None;
+        let mut weight: Option<i128> = None;
+
+        consume!(self, Token::KeywordFont);
+        consume!(self, Token::OpeningBrace);
+
+        while let TokenizerResult::Ok(token, _) = self.token_stream.next() {
+            // todo try_consume! macro?
+            if let Token::KeywordName = token {
+                name = Some(consume!(self, Token::Name(font_name) => font_name));
+            } else if let Token::KeywordPath = token {
+                path = Some(consume!(self, Token::String(font_path) => font_path));
+            } else if let Token::KeywordWeight = token {
+                weight = Some(consume!(self, Token::Integer(font_weight) => font_weight));
+            } else if let Token::ClosingBrace = token {
+                break;
+            } else {
+                return Err(ParserError::UnexpectedToken {
+                    expected: "KeywordName, KeywordPath, KeywordWeight or ClosingBrace".into(),
+                    actual: format!("{:?}", token),
+                });
+            }
+
+            consume!(self, Token::Comma);
+        }
+
+        // todo return error instead of unwrap panicking
+        Ok(Font::new(
+            name.unwrap(),
+            path.unwrap(),
+            weight.unwrap() as u32,
+            italic,
+        ))
     }
 
     fn handle_invalid_result<TOk>(
@@ -108,6 +174,7 @@ mod test {
         MockTokenStream, SourceLocation, SourceLocationRange, TokenizerFailureKind,
     };
     use super::*;
+    use crate::presentation::Font;
 
     macro_rules! parser_test_fail {
         ($test_name:ident, $results:expr, $expected_error:expr) => {
@@ -147,7 +214,9 @@ mod test {
                 let mut stream = MockTokenStream::new(&mut tokens);
                 let mut parser = Parser::new(&mut stream);
 
-                assert_eq!(parser.parse().unwrap(), $expected_presentation);
+                let parsed = parser.parse().unwrap();
+
+                assert_eq!(parsed, $expected_presentation);
             }
         };
     }
@@ -175,7 +244,7 @@ mod test {
             Token::String("some title".into()),
             Token::ClosingBrace,
         ],
-        Presentation::new("some title".into(), vec![])
+        Presentation::new("some title".into(), vec![], Style::new(vec![]))
     );
 
     parser_test!(
@@ -191,7 +260,11 @@ mod test {
             Token::OpeningBrace,
             Token::ClosingBrace
         ],
-        Presentation::new("some title".into(), vec![Slide::new("first slide".into())])
+        Presentation::new(
+            "some title".into(),
+            vec![Slide::new("first slide".into())],
+            Style::new(vec![])
+        )
     );
 
     parser_test_fail!(
@@ -263,6 +336,105 @@ mod test {
         ParserError::UnexpectedToken {
             actual: "OpeningBrace".into(),
             expected: "ClosingBrace".into()
+        }
+    );
+
+    parser_test!(
+        can_parse_single_font,
+        vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
+            Token::KeywordStyle,
+            Token::OpeningBrace,
+            Token::KeywordFont,
+            Token::OpeningBrace,
+            Token::KeywordPath,
+            Token::String("some_path".into()),
+            Token::Comma,
+            Token::KeywordName,
+            Token::Name("my-wonderful-font".into()),
+            Token::Comma,
+            Token::KeywordWeight,
+            Token::Integer(500),
+            Token::Comma,
+            Token::ClosingBrace,
+            Token::ClosingBrace
+        ],
+        Presentation::new(
+            "some title".into(),
+            vec![],
+            Style::new(vec![Font::new(
+                "my-wonderful-font".into(),
+                "some_path".into(),
+                500,
+                false
+            )])
+        )
+    );
+
+    parser_test!(
+        slide_after_style,
+        vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
+            Token::KeywordStyle,
+            Token::OpeningBrace,
+            Token::KeywordFont,
+            Token::OpeningBrace,
+            Token::KeywordPath,
+            Token::String("some_path".into()),
+            Token::Comma,
+            Token::KeywordName,
+            Token::Name("my-wonderful-font".into()),
+            Token::Comma,
+            Token::KeywordWeight,
+            Token::Integer(500),
+            Token::Comma,
+            Token::ClosingBrace,
+            Token::ClosingBrace,
+            Token::KeywordSlide,
+            Token::String("some slide".into()),
+            Token::OpeningBrace,
+            Token::ClosingBrace
+        ],
+        Presentation::new(
+            "some title".into(),
+            vec![Slide::new("some slide".into())],
+            Style::new(vec![Font::new(
+                "my-wonderful-font".into(),
+                "some_path".into(),
+                500,
+                false
+            )])
+        )
+    );
+
+    parser_test_fail!(
+        fails_on_unexpected_token_in_font_definition,
+        vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
+            Token::KeywordStyle,
+            Token::OpeningBrace,
+            Token::KeywordFont,
+            Token::OpeningBrace,
+            Token::Name("invalid".into()),
+            Token::String("some_path".into()),
+            Token::ClosingBrace,
+            Token::ClosingBrace
+        ],
+        ParserError::UnexpectedToken {
+            actual: "Name(\"invalid\")".into(),
+            expected: "KeywordName, KeywordPath, KeywordWeight or ClosingBrace".into()
         }
     );
 
