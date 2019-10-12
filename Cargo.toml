@@ -5,3 +5,6 @@ authors = ["agares <me@agares.info>"]
 edition = "2018"
 
 [dependencies]
+[dependencies.sdl2]
+version="0.32.2"
+features=["use-pkgconfig", "ttf", "gfx"]
