@@ -49,6 +49,16 @@ impl<'a> Tokenizer<'a> {
         ) // fixme this should be an actual range from start to end of the name
     }
 
+    fn handle_integer(&self, integer: &str) -> TokenizerResult {
+        let parsed = integer.parse();
+
+        if let Ok(parsed) = parsed {
+            TokenizerResult::Ok(Token::Integer(parsed), SourceLocationRange::new_single(self.current_location())) // todo should be range from start to end
+        } else {
+            TokenizerResult::Err(TokenizerFailure::new(self.current_location(), TokenizerFailureKind::InvalidIntegerValue(integer.into()))) // todo also this should be a range
+        }
+    }
+
     fn is_name_character(&self, character: char) -> bool {
         character.is_ascii_alphanumeric() || character == '_' || character == '-'
     }
@@ -163,17 +173,11 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 TokenizerState::ReadingNumber { start_index } => {
                     match self.peek() {
                         None => {
-                            return TokenizerResult::Ok(
-                                Token::Integer(self.data[start_index..=index].parse().unwrap()), // todo do not unwrap, return error in case of a failure
-                                SourceLocationRange::new_single(self.current_location()), // todo make this a range
-                            )
-                        } // fixme this is actually reachable
+                            return self.handle_integer(&self.data[start_index..=index]);
+                        }
                         Some((_, next_character)) => {
                             if !next_character.is_ascii_digit() {
-                                return TokenizerResult::Ok(
-                                    Token::Integer(self.data[start_index..=index].parse().unwrap()), // todo do not unwrap, return error in case of a failure
-                                    SourceLocationRange::new_single(self.current_location()), // todo make this a range
-                                );
+                                return self.handle_integer(&self.data[start_index..=index]);
                             }
                         }
                     }
@@ -223,10 +227,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 TokenizerFailureKind::UnclosedString,
             )),
             TokenizerState::ReadingNumber { start_index } => {
-                TokenizerResult::Ok(
-                    Token::Integer(self.data[start_index..].parse().unwrap()), // todo do not unwrap, return error in case of a failure
-                    SourceLocationRange::new_single(self.current_location()), // todo make this a range
-                )
+                self.handle_integer(&self.data[start_index..])
             }
         }
     }

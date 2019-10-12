@@ -56,16 +56,17 @@ pub trait TokenStream {
     fn next(&mut self) -> TokenizerResult;
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum TokenizerFailureKind {
     UnexpectedCharacterInName { index: usize, character: char },
     UnclosedString,
     UnknownEscapeSequence(char),
     UnfinishedEscapeSequence,
     UnexpectedCharacter(char),
+    InvalidIntegerValue(String)
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct TokenizerFailure {
     kind: TokenizerFailureKind,
     location: SourceLocation,

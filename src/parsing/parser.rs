@@ -162,7 +162,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
                 actual: format!("{:?}", token),
                 expected,
             },
-            TokenizerResult::Err(error) => ParserError::TokenizerFailure(*error),
+            TokenizerResult::Err(error) => ParserError::TokenizerFailure(error.clone()),
             TokenizerResult::End => ParserError::UnexpectedEndOfStream { expected },
         })
     }
