@@ -43,6 +43,7 @@ pub enum Token {
     KeywordPath,
     KeywordName,
     KeywordWeight,
+    KeywordItalic,
 }
 
 #[derive(Debug, Eq, PartialEq)]

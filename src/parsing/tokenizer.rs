@@ -52,6 +52,7 @@ impl<'a> Tokenizer<'a> {
                 "name" => Token::KeywordName,
                 "path" => Token::KeywordPath,
                 "weight" => Token::KeywordWeight,
+                "italic" => Token::KeywordItalic,
                 _ => Token::Name(name.into()),
             },
             SourceLocationRange::new(start, self.current_location()),
@@ -439,6 +440,7 @@ mod tests {
     tokenizer_test!(handles_path_as_keyword, "path", Token::KeywordPath);
     tokenizer_test!(handles_name_as_keyword, "name", Token::KeywordName);
     tokenizer_test!(handles_weight_as_keyword, "weight", Token::KeywordWeight);
+    tokenizer_test!(handles_italic_as_keyword, "italic", Token::KeywordItalic);
     tokenizer_test!(
         handles_metadata_as_keyword,
         "metadata",

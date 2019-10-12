@@ -139,11 +139,15 @@ impl<'a, T: TokenStream> Parser<'a, T> {
                 path = Some(consume!(self, Token::String(font_path) => font_path));
             } else if let Token::KeywordWeight = token {
                 weight = Some(consume!(self, Token::Integer(font_weight) => font_weight));
+            } else if let Token::KeywordItalic = token {
+                italic = true;
             } else if let Token::ClosingBrace = token {
                 break;
             } else {
                 return Err(ParserError::UnexpectedToken {
-                    expected: "KeywordName, KeywordPath, KeywordWeight or ClosingBrace".into(),
+                    expected:
+                        "KeywordName, KeywordPath, KeywordWeight, KeywordItalic or ClosingBrace"
+                            .into(),
                     actual: format!("{:?}", token),
                     location: location.clone(),
                 });
@@ -389,6 +393,44 @@ mod test {
     );
 
     parser_test!(
+        can_parse_italic_font,
+        vec![
+            Token::KeywordMetadata,
+            Token::OpeningBrace,
+            Token::KeywordTitle,
+            Token::String("some title".into()),
+            Token::ClosingBrace,
+            Token::KeywordStyle,
+            Token::OpeningBrace,
+            Token::KeywordFont,
+            Token::OpeningBrace,
+            Token::KeywordPath,
+            Token::String("some_path".into()),
+            Token::Comma,
+            Token::KeywordName,
+            Token::Name("my-wonderful-font".into()),
+            Token::Comma,
+            Token::KeywordWeight,
+            Token::Integer(500),
+            Token::Comma,
+            Token::KeywordItalic,
+            Token::Comma,
+            Token::ClosingBrace,
+            Token::ClosingBrace
+        ],
+        Presentation::new(
+            "some title".into(),
+            vec![],
+            Style::new(vec![Font::new(
+                "my-wonderful-font".into(),
+                "some_path".into(),
+                500,
+                true
+            )])
+        )
+    );
+
+    parser_test!(
         slide_after_style,
         vec![
             Token::KeywordMetadata,
@@ -447,7 +489,8 @@ mod test {
         ],
         ParserError::UnexpectedToken {
             actual: "Name(\"invalid\")".into(),
-            expected: "KeywordName, KeywordPath, KeywordWeight or ClosingBrace".into(),
+            expected: "KeywordName, KeywordPath, KeywordWeight, KeywordItalic or ClosingBrace"
+                .into(),
             location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
         }
     );

@@ -35,6 +35,7 @@ pub struct Style {
 
 impl Style {
     pub fn new(fonts: Vec<Font>) -> Self {
+        // todo validate fonts (no repeats with the same name, weight and italicness)
         Self { fonts }
     }
 }
