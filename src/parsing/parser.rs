@@ -34,17 +34,46 @@ macro_rules! consume {
             }
         }
     };
-    ($self:expr, $expected:pat => $action:expr) => {
+    ($self:expr, $($expected:pat => $action:expr),+) => {
         match $self.token_stream.next() {
-            TokenizerResult::Ok($expected, _) => $action,
+            $(
+                TokenizerResult::Ok($expected, _) => $action,
+            )+
             result => {
                 return Self::handle_invalid_result(
                     &result,
-                    stringify!($expected).to_string().replace("Token::", ""),
+                    [$(stringify!($expected),)+].iter().map(|name| name.to_string().replace("Token::", "")).collect::<Vec<String>>().join(", ")
                 )
             }
         }
+    }
+}
+
+macro_rules! peek_decide {
+    ($self:expr, $($expected:pat => $action:expr),+) => {
+        peek_decide!(
+            $self,
+            $( $expected => $action ),+
+            ; return Self::handle_invalid_result(
+                    &TokenizerResult::End,
+                    [$(stringify!($expected),)+].iter().map(|name| name.to_string().replace("Token::", "")).collect::<Vec<String>>().join(", ")
+            )
+        );
     };
+    ($self:expr, $($expected:pat => $action:expr),+;$end_action:expr) => {
+        match $self.token_stream.peek() {
+            None|Some(TokenizerResult::End) => $end_action,
+            $(
+                Some(TokenizerResult::Ok($expected, _)) => $action,
+            )+
+            Some(result) => {
+                return Self::handle_invalid_result(
+                    &result,
+                    [$(stringify!($expected),)+].iter().map(|name| name.to_string().replace("Token::", "")).collect::<Vec<String>>().join(", ")
+                )
+            }
+        }
+    }
 }
 
 impl<'a, T: TokenStream> Parser<'a, T> {
@@ -60,21 +89,12 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         let title: String = self.parse_metadata()?;
 
         loop {
-            match self.token_stream.peek() {
-                Some(TokenizerResult::End) | None => break,
-                Some(TokenizerResult::Ok(Token::KeywordSlide, _)) => {
-                    slides.push(self.parse_slide()?)
-                }
-                Some(TokenizerResult::Ok(Token::KeywordStyle, _)) => {
-                    style = Some(self.parse_style()?);
-                }
-                Some(result) => {
-                    return Self::handle_invalid_result(
-                        result,
-                        "KeywordSlide or KeywordMetadata".into(),
-                    )
-                }
-            }
+            peek_decide!(
+                self,
+                Token::KeywordSlide => slides.push(self.parse_slide()?),
+                Token::KeywordStyle => style = Some(self.parse_style()?)
+                ;break
+            );
         }
 
         Ok(Presentation::new(
@@ -86,7 +106,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
 
     fn parse_slide(&mut self) -> Result<Slide, ParserError> {
         consume!(self, Token::KeywordSlide);
-        let slide_name = consume!(self, Token::String(slide_name) => Ok(slide_name))?;
+        let slide_name = consume!(self, Token::String(slide_name) => slide_name);
         consume!(self, Token::OpeningBrace);
         consume!(self, Token::ClosingBrace);
 
@@ -109,13 +129,10 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         consume!(self, Token::KeywordStyle);
         consume!(self, Token::OpeningBrace);
 
-        match self.token_stream.peek() {
-            Some(TokenizerResult::Ok(Token::KeywordFont, _)) => {
-                fonts.push(self.parse_font()?);
-            }
-            Some(result) => return Self::handle_invalid_result(result, "KeywordFont".into()),
-            None => unreachable!(), // todo verify unreachability and consider adding an actual message
-        }
+        peek_decide!(
+            self,
+            Token::KeywordFont => fonts.push(self.parse_font()?)
+        );
 
         consume!(self, Token::ClosingBrace);
 
@@ -131,27 +148,15 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         consume!(self, Token::KeywordFont);
         consume!(self, Token::OpeningBrace);
 
-        while let TokenizerResult::Ok(token, location) = self.token_stream.next() {
-            // todo try_consume! macro?
-            if let Token::KeywordName = token {
-                name = Some(consume!(self, Token::Name(font_name) => font_name));
-            } else if let Token::KeywordPath = token {
-                path = Some(consume!(self, Token::String(font_path) => font_path));
-            } else if let Token::KeywordWeight = token {
-                weight = Some(consume!(self, Token::Integer(font_weight) => font_weight));
-            } else if let Token::KeywordItalic = token {
-                italic = true;
-            } else if let Token::ClosingBrace = token {
-                break;
-            } else {
-                return Err(ParserError::UnexpectedToken {
-                    expected:
-                        "KeywordName, KeywordPath, KeywordWeight, KeywordItalic or ClosingBrace"
-                            .into(),
-                    actual: format!("{:?}", token),
-                    location: location.clone(),
-                });
-            }
+        loop {
+            consume!(
+                self,
+                Token::KeywordName => name = consume!(self, Token::Name(font_name) => Some(font_name)),
+                Token::KeywordPath => path = consume!(self, Token::String(font_path) => Some(font_path)),
+                Token::KeywordWeight => weight = consume!(self, Token::Integer(font_weight) => Some(font_weight)),
+                Token::KeywordItalic => italic = true,
+                Token::ClosingBrace => break
+            );
 
             consume!(self, Token::Comma);
         }
@@ -296,7 +301,7 @@ mod test {
         ],
         ParserError::UnexpectedToken {
             actual: "Name(\"notslide\")".into(),
-            expected: "KeywordSlide or KeywordMetadata".into(),
+            expected: "KeywordSlide, KeywordStyle".into(),
             location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
         }
     );
@@ -489,8 +494,7 @@ mod test {
         ],
         ParserError::UnexpectedToken {
             actual: "Name(\"invalid\")".into(),
-            expected: "KeywordName, KeywordPath, KeywordWeight, KeywordItalic or ClosingBrace"
-                .into(),
+            expected: "KeywordName, KeywordPath, KeywordWeight, KeywordItalic, ClosingBrace".into(),
             location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
         }
     );
