@@ -8,9 +8,18 @@ use std::str::CharIndices;
 #[derive(Eq, PartialEq, Debug)]
 enum TokenizerState {
     None,
-    ReadingName { start_index: usize },
-    ReadingString { start_index: usize },
-    ReadingNumber { start_index: usize },
+    ReadingName {
+        start_index: usize,
+        start_location: SourceLocation,
+    },
+    ReadingString {
+        start_index: usize,
+        start_location: SourceLocation,
+    },
+    ReadingNumber {
+        start_index: usize,
+        start_location: SourceLocation,
+    },
 }
 
 pub struct Tokenizer<'a> {
@@ -32,7 +41,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn handle_name_or_keyword(&self, name: &str) -> TokenizerResult {
+    fn handle_name_or_keyword(&self, name: &str, start: SourceLocation) -> TokenizerResult {
         TokenizerResult::Ok(
             match name {
                 "slide" => Token::KeywordSlide,
@@ -45,17 +54,23 @@ impl<'a> Tokenizer<'a> {
                 "weight" => Token::KeywordWeight,
                 _ => Token::Name(name.into()),
             },
-            SourceLocationRange::new_single(self.current_location()),
-        ) // fixme this should be an actual range from start to end of the name
+            SourceLocationRange::new(start, self.current_location()),
+        )
     }
 
-    fn handle_integer(&self, integer: &str) -> TokenizerResult {
+    fn handle_integer(&self, integer: &str, start: SourceLocation) -> TokenizerResult {
         let parsed = integer.parse();
 
         if let Ok(parsed) = parsed {
-            TokenizerResult::Ok(Token::Integer(parsed), SourceLocationRange::new_single(self.current_location())) // todo should be range from start to end
+            TokenizerResult::Ok(
+                Token::Integer(parsed),
+                SourceLocationRange::new(start, self.current_location()),
+            )
         } else {
-            TokenizerResult::Err(TokenizerFailure::new(self.current_location(), TokenizerFailureKind::InvalidIntegerValue(integer.into()))) // todo also this should be a range
+            TokenizerResult::Err(TokenizerFailure::new(
+                self.current_location(),
+                TokenizerFailureKind::InvalidIntegerValue(integer.into()),
+            ))
         }
     }
 
@@ -103,13 +118,22 @@ impl<'a> TokenStream for Tokenizer<'a> {
         while let Some((index, character)) = self.read_next() {
             match state {
                 TokenizerState::None if character.is_ascii_alphabetic() => {
-                    state = TokenizerState::ReadingName { start_index: index };
+                    state = TokenizerState::ReadingName {
+                        start_index: index,
+                        start_location: self.current_location(),
+                    };
 
                     if self.check_next(',') {
-                        return self.handle_name_or_keyword(&self.data[index..=index]);
+                        return self.handle_name_or_keyword(
+                            &self.data[index..=index],
+                            self.current_location(),
+                        );
                     }
                 }
-                TokenizerState::ReadingName { start_index } => {
+                TokenizerState::ReadingName {
+                    start_index,
+                    start_location,
+                } => {
                     let is_next_character_a_comma = self.check_next(',');
 
                     if self.is_name_character(character) && !is_next_character_a_comma {
@@ -119,7 +143,10 @@ impl<'a> TokenStream for Tokenizer<'a> {
                     if character.is_ascii_whitespace() || is_next_character_a_comma {
                         let actual_index = if is_next_character_a_comma { 1 } else { 0 } + index;
 
-                        return self.handle_name_or_keyword(&self.data[start_index..actual_index]);
+                        return self.handle_name_or_keyword(
+                            &self.data[start_index..actual_index],
+                            start_location,
+                        );
                     } else {
                         self.is_failed = true;
 
@@ -132,7 +159,10 @@ impl<'a> TokenStream for Tokenizer<'a> {
                     }
                 }
                 TokenizerState::None if character == '"' => {
-                    state = TokenizerState::ReadingString { start_index: index }
+                    state = TokenizerState::ReadingString {
+                        start_index: index,
+                        start_location: self.current_location(),
+                    }
                 }
                 TokenizerState::ReadingString { .. } if character == '\\' => {
                     match self.iter.peek() {
@@ -156,32 +186,41 @@ impl<'a> TokenStream for Tokenizer<'a> {
                         }
                     }
                 }
-                TokenizerState::ReadingString { start_index } if character == '"' => {
+                TokenizerState::ReadingString {
+                    start_index,
+                    start_location,
+                } if character == '"' => {
                     return TokenizerResult::Ok(
                         Token::String(
                             self.data[start_index + 1..index]
                                 .to_owned()
                                 .replace("\\\"", "\""),
                         ),
-                        SourceLocationRange::new_single(self.current_location()),
-                    ); // fixme this should be a range from start to end of the string
+                        SourceLocationRange::new(start_location, self.current_location()),
+                    );
                 }
                 TokenizerState::ReadingString { .. } => {}
                 TokenizerState::None if character.is_ascii_digit() || character == '-' => {
-                    state = TokenizerState::ReadingNumber { start_index: index }
-                }
-                TokenizerState::ReadingNumber { start_index } => {
-                    match self.peek() {
-                        None => {
-                            return self.handle_integer(&self.data[start_index..=index]);
-                        }
-                        Some((_, next_character)) => {
-                            if !next_character.is_ascii_digit() {
-                                return self.handle_integer(&self.data[start_index..=index]);
-                            }
-                        }
+                    state = TokenizerState::ReadingNumber {
+                        start_index: index,
+                        start_location: self.current_location(),
                     }
                 }
+                TokenizerState::ReadingNumber {
+                    start_index,
+                    start_location,
+                } => match self.peek() {
+                    None => {
+                        return self
+                            .handle_integer(&self.data[start_index..=index], start_location);
+                    }
+                    Some((_, next_character)) => {
+                        if !next_character.is_ascii_digit() {
+                            return self
+                                .handle_integer(&self.data[start_index..=index], start_location);
+                        }
+                    }
+                },
                 TokenizerState::None => {
                     if character.is_ascii_whitespace() {
                         continue;
@@ -218,17 +257,19 @@ impl<'a> TokenStream for Tokenizer<'a> {
         }
 
         match state {
-            TokenizerState::ReadingName { start_index } => {
-                self.handle_name_or_keyword(&self.data[start_index..])
-            }
+            TokenizerState::ReadingName {
+                start_index,
+                start_location,
+            } => self.handle_name_or_keyword(&self.data[start_index..], start_location),
             TokenizerState::None => TokenizerResult::End,
             TokenizerState::ReadingString { .. } => TokenizerResult::Err(TokenizerFailure::new(
                 self.current_location(),
                 TokenizerFailureKind::UnclosedString,
             )),
-            TokenizerState::ReadingNumber { start_index } => {
-                self.handle_integer(&self.data[start_index..])
-            }
+            TokenizerState::ReadingNumber {
+                start_index,
+                start_location,
+            } => self.handle_integer(&self.data[start_index..], start_location),
         }
     }
 }

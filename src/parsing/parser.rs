@@ -1,13 +1,20 @@
 use super::token_stream::{
     PeekableTokenStream, Token, TokenStream, TokenizerFailure, TokenizerResult,
 };
+use crate::parsing::token_stream::SourceLocationRange;
 use crate::presentation::{Font, Presentation, Slide, Style};
 use std::string::ParseError;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
-    UnexpectedToken { actual: String, expected: String },
-    UnexpectedEndOfStream { expected: String },
+    UnexpectedToken {
+        actual: String,
+        expected: String,
+        location: SourceLocationRange,
+    },
+    UnexpectedEndOfStream {
+        expected: String,
+    },
     TokenizerFailure(TokenizerFailure),
 }
 
@@ -124,7 +131,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         consume!(self, Token::KeywordFont);
         consume!(self, Token::OpeningBrace);
 
-        while let TokenizerResult::Ok(token, _) = self.token_stream.next() {
+        while let TokenizerResult::Ok(token, location) = self.token_stream.next() {
             // todo try_consume! macro?
             if let Token::KeywordName = token {
                 name = Some(consume!(self, Token::Name(font_name) => font_name));
@@ -138,6 +145,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
                 return Err(ParserError::UnexpectedToken {
                     expected: "KeywordName, KeywordPath, KeywordWeight or ClosingBrace".into(),
                     actual: format!("{:?}", token),
+                    location: location.clone(),
                 });
             }
 
@@ -158,9 +166,10 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         expected: String,
     ) -> Result<TOk, ParserError> {
         Err(match result {
-            TokenizerResult::Ok(token, _) => ParserError::UnexpectedToken {
+            TokenizerResult::Ok(token, location) => ParserError::UnexpectedToken {
                 actual: format!("{:?}", token),
                 expected,
+                location: *location,
             },
             TokenizerResult::Err(error) => ParserError::TokenizerFailure(error.clone()),
             TokenizerResult::End => ParserError::UnexpectedEndOfStream { expected },
@@ -231,7 +240,8 @@ mod test {
         ],
         ParserError::UnexpectedToken {
             actual: "KeywordSlide".into(),
-            expected: "KeywordMetadata".into()
+            expected: "KeywordMetadata".into(),
+            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
         }
     );
 
@@ -282,7 +292,8 @@ mod test {
         ],
         ParserError::UnexpectedToken {
             actual: "Name(\"notslide\")".into(),
-            expected: "KeywordSlide or KeywordMetadata".into()
+            expected: "KeywordSlide or KeywordMetadata".into(),
+            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
         }
     );
 
@@ -316,7 +327,8 @@ mod test {
         ],
         ParserError::UnexpectedToken {
             actual: "ClosingBrace".into(),
-            expected: "OpeningBrace".into()
+            expected: "OpeningBrace".into(),
+            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
         }
     );
 
@@ -335,7 +347,8 @@ mod test {
         ],
         ParserError::UnexpectedToken {
             actual: "OpeningBrace".into(),
-            expected: "ClosingBrace".into()
+            expected: "ClosingBrace".into(),
+            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
         }
     );
 
@@ -434,7 +447,8 @@ mod test {
         ],
         ParserError::UnexpectedToken {
             actual: "Name(\"invalid\")".into(),
-            expected: "KeywordName, KeywordPath, KeywordWeight or ClosingBrace".into()
+            expected: "KeywordName, KeywordPath, KeywordWeight or ClosingBrace".into(),
+            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
         }
     );
 

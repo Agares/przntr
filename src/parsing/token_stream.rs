@@ -63,7 +63,7 @@ pub enum TokenizerFailureKind {
     UnknownEscapeSequence(char),
     UnfinishedEscapeSequence,
     UnexpectedCharacter(char),
-    InvalidIntegerValue(String)
+    InvalidIntegerValue(String),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -73,6 +73,7 @@ pub struct TokenizerFailure {
 }
 
 impl TokenizerFailure {
+    // todo should location be a range instead?
     pub fn new(location: SourceLocation, kind: TokenizerFailureKind) -> Self {
         Self { location, kind }
     }
