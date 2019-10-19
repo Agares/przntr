@@ -1,83 +1,72 @@
+use crate::event_loop::OnLoop;
 use crate::presentation::Presentation;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Point;
-use sdl2::render::Texture;
-use std::time::Duration;
+use sdl2::render::{Texture, WindowCanvas};
+use sdl2::surface::Surface;
+use sdl2::ttf::{Font, Sdl2TtfContext};
+use sdl2::Sdl;
 
-pub trait Renderer {
-    fn render(&mut self, presentation: &Presentation);
+pub struct SDL2Renderer<'a> {
+    font: Font<'a, 'a>,
+    window_canvas: WindowCanvas,
 }
 
-pub struct SDL2Renderer {}
-
-impl SDL2Renderer {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl Renderer for SDL2Renderer {
-    fn render(&mut self, presentation: &Presentation) {
-        let sdl_context = sdl2::init().unwrap();
-        let sdl_ttf_context = sdl2::ttf::init().unwrap();
-        let font = sdl_ttf_context
-            .load_font(presentation.style().fonts().first().unwrap().path(), 24)
-            .unwrap();
-
-        let video_subsystem = sdl_context.video().unwrap();
-
-        let window = video_subsystem
-            .window("rust-sdl2 demo", 800, 600)
+impl<'a> SDL2Renderer<'a> {
+    pub fn new(sdl: &'a Sdl, sdl_ttf: &'a Sdl2TtfContext, presentation: &'a Presentation) -> Self {
+        let mut window_canvas = sdl
+            .video()
+            .unwrap()
+            .window("some presentation", 800, 600)
             .position_centered()
+            .build()
+            .unwrap()
+            .into_canvas()
             .build()
             .unwrap();
 
-        let mut canvas = window.into_canvas().build().unwrap();
-        let window_center = Point::new(
-            (canvas.window().size().0 / 2) as i32,
-            (canvas.window().size().1 / 2) as i32,
-        );
+        window_canvas.set_draw_color(Color::RGB(0, 0, 0));
+        window_canvas.clear();
+        window_canvas.present();
 
-        let txt = font
-            .render("test")
+        Self {
+            font: sdl_ttf
+                .load_font(presentation.style().fonts().first().unwrap().path(), 24)
+                .unwrap(),
+            window_canvas,
+        }
+    }
+
+    fn window_center(&self) -> Point {
+        Point::new(
+            (self.window_canvas.window().size().0 / 2) as i32,
+            (self.window_canvas.window().size().1 / 2) as i32,
+        )
+    }
+
+    fn render_text(&self, text: &str) -> Surface {
+        self.font
+            .render(text)
             .blended(Color::RGB(0xff, 0x18, 0x85))
-            .unwrap();
+            .unwrap()
+    }
+}
+
+impl<'a> OnLoop for SDL2Renderer<'a> {
+    fn run(&mut self) {
+        self.window_canvas.clear();
+
+        let txt = self.render_text("test");
+
         let txt_rect = txt.rect();
         let mut dst_txt_rect = txt_rect;
-        dst_txt_rect.center_on(window_center);
-        let texture_creator = canvas.texture_creator();
+        dst_txt_rect.center_on(self.window_center());
+        let texture_creator = self.window_canvas.texture_creator();
         let texture: Texture = texture_creator.create_texture_from_surface(txt).unwrap();
 
-        canvas.set_draw_color(Color::RGB(0, 0, 0));
-        canvas.clear();
-        canvas.present();
-
-        let mut event_pump = sdl_context.event_pump().unwrap();
-
-        'running: loop {
-            canvas.clear();
-
-            for event in event_pump.poll_iter() {
-                match event {
-                    Event::Quit { .. }
-                    | Event::KeyDown {
-                        keycode: Some(Keycode::Escape),
-                        ..
-                    } => break 'running,
-                    Event::KeyDown {
-                        keycode: Some(keycode),
-                        ..
-                    } => println!("Keydown: {}", keycode),
-                    _ => {}
-                }
-            }
-
-            canvas.copy(&texture, txt_rect, dst_txt_rect).unwrap();
-            canvas.present();
-
-            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-        }
+        self.window_canvas
+            .copy(&texture, txt_rect, dst_txt_rect)
+            .unwrap();
+        self.window_canvas.present();
     }
 }
