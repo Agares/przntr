@@ -3,7 +3,6 @@ use super::token_stream::{
 };
 use crate::parsing::token_stream::SourceLocationRange;
 use crate::presentation::{Font, Presentation, Slide, Style};
-use std::string::ParseError;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
@@ -100,7 +99,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         Ok(Presentation::new(
             title,
             slides,
-            style.unwrap_or(Style::new(vec![])),
+            style.unwrap_or_else(|| Style::new(vec![])),
         ))
     }
 
@@ -192,8 +191,8 @@ mod test {
         MockTokenStream, SourceLocation, SourceLocationRange, TokenizerFailureKind,
     };
     use super::*;
-    use crate::presentation::Font;
     use crate::parsing::tokenizer::Tokenizer;
+    use crate::presentation::Font;
 
     macro_rules! parser_test_fail {
         ($test_name:ident, $results:expr, $expected_error:expr) => {
@@ -219,7 +218,7 @@ mod test {
 
                 assert_eq!(parsed, $expected_presentation);
             }
-        }
+        };
     }
 
     parser_test_fail!(
@@ -228,7 +227,10 @@ mod test {
         ParserError::UnexpectedToken {
             actual: "KeywordSlide".into(),
             expected: "KeywordMetadata".into(),
-            location: SourceLocationRange::new(SourceLocation::new(0, 1), SourceLocation::new(0, 6))
+            location: SourceLocationRange::new(
+                SourceLocation::new(0, 1),
+                SourceLocation::new(0, 6)
+            )
         }
     );
 
@@ -254,7 +256,10 @@ mod test {
         ParserError::UnexpectedToken {
             actual: "Name(\"notslide\")".into(),
             expected: "KeywordSlide, KeywordStyle".into(),
-            location: SourceLocationRange::new(SourceLocation::new(0, 33), SourceLocation::new(0, 41))
+            location: SourceLocationRange::new(
+                SourceLocation::new(0, 33),
+                SourceLocation::new(0, 41)
+            )
         }
     );
 
@@ -337,7 +342,10 @@ mod test {
         ParserError::UnexpectedToken {
             actual: "Name(\"invalid\")".into(),
             expected: "KeywordName, KeywordPath, KeywordWeight, KeywordItalic, ClosingBrace".into(),
-            location: SourceLocationRange::new(SourceLocation::new(0, 48), SourceLocation::new(0, 55))
+            location: SourceLocationRange::new(
+                SourceLocation::new(0, 48),
+                SourceLocation::new(0, 55)
+            )
         }
     );
 

@@ -26,6 +26,10 @@ impl Font {
             italic,
         }
     }
+
+    pub fn path(&self) -> &String {
+        &self.path
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -37,6 +41,10 @@ impl Style {
     pub fn new(fonts: Vec<Font>) -> Self {
         // todo validate fonts (no repeats with the same name, weight and italicness)
         Self { fonts }
+    }
+
+    pub fn fonts(&self) -> &Vec<Font> {
+        &self.fonts
     }
 }
 
@@ -54,5 +62,9 @@ impl Presentation {
             slides,
             style,
         }
+    }
+
+    pub fn style(&self) -> &Style {
+        &self.style
     }
 }
