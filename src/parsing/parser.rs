@@ -193,22 +193,14 @@ mod test {
     };
     use super::*;
     use crate::presentation::Font;
+    use crate::parsing::tokenizer::Tokenizer;
 
     macro_rules! parser_test_fail {
         ($test_name:ident, $results:expr, $expected_error:expr) => {
             #[test]
             pub fn $test_name() {
-                let mut tokens = $results
-                    .drain(..)
-                    .map(|token| {
-                        TokenizerResult::Ok(
-                            token,
-                            SourceLocationRange::new_single(SourceLocation::new(0, 0)),
-                        )
-                    })
-                    .collect();
-                let mut stream = MockTokenStream::new(&mut tokens);
-                let mut parser = Parser::new(&mut stream);
+                let mut tokenizer = Tokenizer::new($results);
+                let mut parser = Parser::new(&mut tokenizer);
 
                 let error: ParserError = $expected_error;
                 assert_eq!(parser.parse(), Err(error));
@@ -220,65 +212,35 @@ mod test {
         ($test_name:ident, $results:expr, $expected_presentation:expr) => {
             #[test]
             pub fn $test_name() {
-                let mut tokens = $results
-                    .drain(..)
-                    .map(|token| {
-                        TokenizerResult::Ok(
-                            token,
-                            SourceLocationRange::new_single(SourceLocation::new(0, 0)),
-                        )
-                    })
-                    .collect();
-                let mut stream = MockTokenStream::new(&mut tokens);
-                let mut parser = Parser::new(&mut stream);
+                let mut tokenizer = Tokenizer::new($results);
+                let mut parser = Parser::new(&mut tokenizer);
 
                 let parsed = parser.parse().unwrap();
 
                 assert_eq!(parsed, $expected_presentation);
             }
-        };
+        }
     }
 
     parser_test_fail!(
         fails_on_slide_before_metadata,
-        vec![
-            Token::KeywordSlide,
-            Token::String("some slide".into()),
-            Token::OpeningBrace,
-            Token::ClosingBrace,
-        ],
+        "slide \"some slide\" {}",
         ParserError::UnexpectedToken {
             actual: "KeywordSlide".into(),
             expected: "KeywordMetadata".into(),
-            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            location: SourceLocationRange::new(SourceLocation::new(0, 1), SourceLocation::new(0, 6))
         }
     );
 
     parser_test!(
         can_parse_metadata_block,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-        ],
+        "metadata { title \"some title\" }",
         Presentation::new("some title".into(), vec![], Style::new(vec![]))
     );
 
     parser_test!(
         can_parse_slide_after_metadata,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::KeywordSlide,
-            Token::String("first slide".into()),
-            Token::OpeningBrace,
-            Token::ClosingBrace
-        ],
+        "metadata { title \"some title\" } slide \"first slide\" {}",
         Presentation::new(
             "some title".into(),
             vec![Slide::new("first slide".into())],
@@ -288,35 +250,17 @@ mod test {
 
     parser_test_fail!(
         fails_if_block_type_is_not_slide,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::Name("notslide".into()),
-            Token::String("some slide".into()),
-            Token::OpeningBrace,
-            Token::ClosingBrace,
-        ],
+        "metadata { title \"some title\" } notslide \"some slide\" {}",
         ParserError::UnexpectedToken {
             actual: "Name(\"notslide\")".into(),
             expected: "KeywordSlide, KeywordStyle".into(),
-            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            location: SourceLocationRange::new(SourceLocation::new(0, 33), SourceLocation::new(0, 41))
         }
     );
 
     parser_test_fail!(
         fails_on_missing_braces,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::KeywordSlide,
-            Token::String("some slide".into()),
-        ],
+        "metadata { title \"some title\" } slide \"some slide\"",
         ParserError::UnexpectedEndOfStream {
             expected: "OpeningBrace".into()
         }
@@ -324,67 +268,27 @@ mod test {
 
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_name,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::KeywordSlide,
-            Token::String("some slide".into()),
-            Token::ClosingBrace,
-        ],
+        "metadata { title \"some title\" } slide \"some slide\" }",
         ParserError::UnexpectedToken {
             actual: "ClosingBrace".into(),
             expected: "OpeningBrace".into(),
-            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            location: SourceLocationRange::new_single(SourceLocation::new(0, 52))
         }
     );
 
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_opening_brace,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::KeywordSlide,
-            Token::String("some slide".into()),
-            Token::OpeningBrace,
-            Token::OpeningBrace,
-        ],
+        "metadata { title \"some title\" } slide \"some slide\" {{",
         ParserError::UnexpectedToken {
             actual: "OpeningBrace".into(),
             expected: "ClosingBrace".into(),
-            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            location: SourceLocationRange::new_single(SourceLocation::new(0, 53))
         }
     );
 
     parser_test!(
         can_parse_single_font,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::KeywordStyle,
-            Token::OpeningBrace,
-            Token::KeywordFont,
-            Token::OpeningBrace,
-            Token::KeywordPath,
-            Token::String("some_path".into()),
-            Token::Comma,
-            Token::KeywordName,
-            Token::Name("my-wonderful-font".into()),
-            Token::Comma,
-            Token::KeywordWeight,
-            Token::Integer(500),
-            Token::Comma,
-            Token::ClosingBrace,
-            Token::ClosingBrace
-        ],
+        "metadata { title \"some title\" } style { font { path \"some_path\", name my-wonderful-font, weight 500,}}",
         Presentation::new(
             "some title".into(),
             vec![],
@@ -399,30 +303,7 @@ mod test {
 
     parser_test!(
         can_parse_italic_font,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::KeywordStyle,
-            Token::OpeningBrace,
-            Token::KeywordFont,
-            Token::OpeningBrace,
-            Token::KeywordPath,
-            Token::String("some_path".into()),
-            Token::Comma,
-            Token::KeywordName,
-            Token::Name("my-wonderful-font".into()),
-            Token::Comma,
-            Token::KeywordWeight,
-            Token::Integer(500),
-            Token::Comma,
-            Token::KeywordItalic,
-            Token::Comma,
-            Token::ClosingBrace,
-            Token::ClosingBrace
-        ],
+        "metadata { title \"some title\" } style { font { path \"some_path\", name my-wonderful-font, weight 500, italic, } }",
         Presentation::new(
             "some title".into(),
             vec![],
@@ -437,32 +318,7 @@ mod test {
 
     parser_test!(
         slide_after_style,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::KeywordStyle,
-            Token::OpeningBrace,
-            Token::KeywordFont,
-            Token::OpeningBrace,
-            Token::KeywordPath,
-            Token::String("some_path".into()),
-            Token::Comma,
-            Token::KeywordName,
-            Token::Name("my-wonderful-font".into()),
-            Token::Comma,
-            Token::KeywordWeight,
-            Token::Integer(500),
-            Token::Comma,
-            Token::ClosingBrace,
-            Token::ClosingBrace,
-            Token::KeywordSlide,
-            Token::String("some slide".into()),
-            Token::OpeningBrace,
-            Token::ClosingBrace
-        ],
+        "metadata { title \"some title\" } style { font { path \"some_path\", name my-wonderful-font, weight 500, } } slide \"some slide\" {}",
         Presentation::new(
             "some title".into(),
             vec![Slide::new("some slide".into())],
@@ -477,25 +333,11 @@ mod test {
 
     parser_test_fail!(
         fails_on_unexpected_token_in_font_definition,
-        vec![
-            Token::KeywordMetadata,
-            Token::OpeningBrace,
-            Token::KeywordTitle,
-            Token::String("some title".into()),
-            Token::ClosingBrace,
-            Token::KeywordStyle,
-            Token::OpeningBrace,
-            Token::KeywordFont,
-            Token::OpeningBrace,
-            Token::Name("invalid".into()),
-            Token::String("some_path".into()),
-            Token::ClosingBrace,
-            Token::ClosingBrace
-        ],
+        "metadata { title \"some title\" } style { font { invalid \"some_path\" } }",
         ParserError::UnexpectedToken {
             actual: "Name(\"invalid\")".into(),
             expected: "KeywordName, KeywordPath, KeywordWeight, KeywordItalic, ClosingBrace".into(),
-            location: SourceLocationRange::new_single(SourceLocation::new(0, 0))
+            location: SourceLocationRange::new(SourceLocation::new(0, 48), SourceLocation::new(0, 55))
         }
     );
 
