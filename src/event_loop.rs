@@ -36,14 +36,14 @@ impl<'a> EventLoop<'a> {
                 }
             }
 
-            for item in self.onloops.iter_mut() {
+            for item in &mut self.onloops {
                 if item.run().is_err() {
                     println!("OnLoop failed!"); // todo more detailed message, actual logging
                 }
             }
 
             // todo implement the FPS limit correctly
-            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+            ::std::thread::sleep(Duration::new(0, 1_000_000_000_u32 / 60));
         }
     }
 }

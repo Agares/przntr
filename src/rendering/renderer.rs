@@ -7,12 +7,12 @@ use sdl2::surface::Surface;
 use sdl2::ttf::{Font, Sdl2TtfContext};
 use sdl2::Sdl;
 
-pub struct SDL2Renderer<'a> {
+pub struct SDL2<'a> {
     font: Font<'a, 'a>,
     window_canvas: WindowCanvas,
 }
 
-impl<'a> SDL2Renderer<'a> {
+impl<'a> SDL2<'a> {
     pub fn new(sdl: &'a Sdl, sdl_ttf: &'a Sdl2TtfContext, presentation: &'a Presentation) -> Self {
         let mut window_canvas = sdl
             .video()
@@ -45,14 +45,15 @@ impl<'a> SDL2Renderer<'a> {
     }
 
     fn render_text(&self, text: &str) -> Result<Surface, String> {
-        return Ok(self.font
+        Ok(self
+            .font
             .render(text)
             .blended(Color::RGB(0xff, 0x18, 0x85))
             .map_err(|e| return format!("{:?}", e))?)
     }
 }
 
-impl<'a> OnLoop for SDL2Renderer<'a>  {
+impl<'a> OnLoop for SDL2<'a> {
     fn run(&mut self) -> Result<(), String> {
         self.window_canvas.clear();
 
@@ -66,10 +67,9 @@ impl<'a> OnLoop for SDL2Renderer<'a>  {
             .create_texture_from_surface(txt)
             .map_err(|e| return format!("{:?}", e))?;
 
-        self.window_canvas
-            .copy(&texture, txt_rect, dst_txt_rect)?;
+        self.window_canvas.copy(&texture, txt_rect, dst_txt_rect)?;
         self.window_canvas.present();
 
-        return Ok(())
+        Ok(())
     }
 }

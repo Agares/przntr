@@ -13,7 +13,7 @@ pub struct Slide {
 
 impl Slide {
     pub fn new(name: String) -> Self {
-        Slide { name }
+        Self { name }
     }
 }
 
@@ -84,7 +84,7 @@ pub struct Presentation {
 
 impl Presentation {
     pub fn new(name: String, slides: Vec<Slide>, style: Style) -> Self {
-        Presentation {
+        Self {
             name,
             slides,
             style,

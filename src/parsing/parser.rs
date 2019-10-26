@@ -1,11 +1,9 @@
-use super::token_stream::{
-    PeekableTokenStream, Token, TokenStream, TokenizerFailure, TokenizerResult,
-};
+use super::token_stream::{Peekable, Token, TokenStream, TokenizerFailure, TokenizerResult};
 use crate::parsing::token_stream::SourceLocationRange;
 use crate::presentation::{Font, Presentation, Slide, Style, StyleError};
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum ParserError {
+pub enum Error {
     UnexpectedToken {
         actual: String,
         expected: String,
@@ -18,14 +16,14 @@ pub enum ParserError {
     InvalidStyleDefinition(StyleError),
 }
 
-impl From<StyleError> for ParserError {
+impl From<StyleError> for Error {
     fn from(style_error: StyleError) -> Self {
-        ParserError::InvalidStyleDefinition(style_error)
+        Self::InvalidStyleDefinition(style_error)
     }
 }
 
 pub struct Parser<'a, T: TokenStream> {
-    token_stream: PeekableTokenStream<'a, T>,
+    token_stream: Peekable<'a, T>,
 }
 
 macro_rules! consume {
@@ -85,11 +83,11 @@ macro_rules! peek_decide {
 impl<'a, T: TokenStream> Parser<'a, T> {
     pub fn new(token_stream: &'a mut T) -> Self {
         Parser {
-            token_stream: PeekableTokenStream::new(token_stream),
+            token_stream: Peekable::new(token_stream),
         }
     }
 
-    pub fn parse(&mut self) -> Result<Presentation, ParserError> {
+    pub fn parse(&mut self) -> Result<Presentation, Error> {
         let mut slides: Vec<Slide> = Vec::new();
         let mut style = None;
         let title: String = self.parse_metadata()?;
@@ -110,7 +108,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         ))
     }
 
-    fn parse_slide(&mut self) -> Result<Slide, ParserError> {
+    fn parse_slide(&mut self) -> Result<Slide, Error> {
         consume!(self, Token::KeywordSlide);
         let slide_name = consume!(self, Token::String(slide_name) => slide_name);
         consume!(self, Token::OpeningBrace);
@@ -119,7 +117,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         Ok(Slide::new(slide_name))
     }
 
-    fn parse_metadata(&mut self) -> Result<String, ParserError> {
+    fn parse_metadata(&mut self) -> Result<String, Error> {
         consume!(self, Token::KeywordMetadata);
         consume!(self, Token::OpeningBrace);
         consume!(self, Token::KeywordTitle);
@@ -129,7 +127,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         Ok(title)
     }
 
-    fn parse_style(&mut self) -> Result<Style, ParserError> {
+    fn parse_style(&mut self) -> Result<Style, Error> {
         let mut fonts: Vec<Font> = vec![];
 
         consume!(self, Token::KeywordStyle);
@@ -146,7 +144,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         Ok(Style::new(fonts)?)
     }
 
-    fn parse_font(&mut self) -> Result<Font, ParserError> {
+    fn parse_font(&mut self) -> Result<Font, Error> {
         let mut italic = false;
         let mut name: Option<String> = None;
         let mut path: Option<String> = None;
@@ -180,15 +178,15 @@ impl<'a, T: TokenStream> Parser<'a, T> {
     fn handle_invalid_result<TOk>(
         result: &TokenizerResult,
         expected: String,
-    ) -> Result<TOk, ParserError> {
+    ) -> Result<TOk, Error> {
         Err(match result {
-            TokenizerResult::Ok(token, location) => ParserError::UnexpectedToken {
+            TokenizerResult::Ok(token, location) => Error::UnexpectedToken {
                 actual: format!("{:?}", token),
                 expected,
                 location: *location,
             },
-            TokenizerResult::Err(error) => ParserError::TokenizerFailure(error.clone()),
-            TokenizerResult::End => ParserError::UnexpectedEndOfStream { expected },
+            TokenizerResult::Err(error) => Error::TokenizerFailure(error.clone()),
+            TokenizerResult::End => Error::UnexpectedEndOfStream { expected },
         })
     }
 }
@@ -209,7 +207,7 @@ mod test {
                 let mut tokenizer = Tokenizer::new($results);
                 let mut parser = Parser::new(&mut tokenizer);
 
-                let error: ParserError = $expected_error;
+                let error: Error = $expected_error;
                 assert_eq!(parser.parse(), Err(error));
             }
         };
@@ -232,7 +230,7 @@ mod test {
     parser_test_fail!(
         fails_on_slide_before_metadata,
         "slide \"some slide\" {}",
-        ParserError::UnexpectedToken {
+        Error::UnexpectedToken {
             actual: "KeywordSlide".into(),
             expected: "KeywordMetadata".into(),
             location: SourceLocationRange::new(
@@ -261,7 +259,7 @@ mod test {
     parser_test_fail!(
         fails_if_block_type_is_not_slide,
         "metadata { title \"some title\" } notslide \"some slide\" {}",
-        ParserError::UnexpectedToken {
+        Error::UnexpectedToken {
             actual: "Name(\"notslide\")".into(),
             expected: "KeywordSlide, KeywordStyle".into(),
             location: SourceLocationRange::new(
@@ -274,7 +272,7 @@ mod test {
     parser_test_fail!(
         fails_on_missing_braces,
         "metadata { title \"some title\" } slide \"some slide\"",
-        ParserError::UnexpectedEndOfStream {
+        Error::UnexpectedEndOfStream {
             expected: "OpeningBrace".into()
         }
     );
@@ -282,7 +280,7 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_name,
         "metadata { title \"some title\" } slide \"some slide\" }",
-        ParserError::UnexpectedToken {
+        Error::UnexpectedToken {
             actual: "ClosingBrace".into(),
             expected: "OpeningBrace".into(),
             location: SourceLocationRange::new_single(SourceLocation::new(0, 52))
@@ -292,7 +290,7 @@ mod test {
     parser_test_fail!(
         fails_on_unexpected_token_after_slide_opening_brace,
         "metadata { title \"some title\" } slide \"some slide\" {{",
-        ParserError::UnexpectedToken {
+        Error::UnexpectedToken {
             actual: "OpeningBrace".into(),
             expected: "ClosingBrace".into(),
             location: SourceLocationRange::new_single(SourceLocation::new(0, 53))
@@ -347,24 +345,25 @@ mod test {
     parser_test!(
         style_with_multiple_fonts,
         "metadata { title \"some title\" } \n\
-        style { \n\
-            font { path \"path1\", name font-1, weight 500, } \n\
-            font { path \"path2\", name font-1, weight 500, italic, } \n\
-        }",
+         style { \n\
+         font { path \"path1\", name font-1, weight 500, } \n\
+         font { path \"path2\", name font-1, weight 500, italic, } \n\
+         }",
         Presentation::new(
             "some title".into(),
             vec![],
             Style::new(vec![
                 Font::new("font-1".into(), "path1".into(), 500, false),
                 Font::new("font-1".into(), "path2".into(), 500, true)
-            ]).unwrap()
+            ])
+            .unwrap()
         )
     );
 
     parser_test_fail!(
         fails_on_unexpected_token_in_font_definition,
         "metadata { title \"some title\" } style { font { invalid \"some_path\" } }",
-        ParserError::UnexpectedToken {
+        Error::UnexpectedToken {
             actual: "Name(\"invalid\")".into(),
             expected: "KeywordName, KeywordPath, KeywordWeight, KeywordItalic, ClosingBrace".into(),
             location: SourceLocationRange::new(
@@ -385,7 +384,7 @@ mod test {
 
         assert_eq!(
             parser.parse(),
-            Err(ParserError::TokenizerFailure(TokenizerFailure::new(
+            Err(Error::TokenizerFailure(TokenizerFailure::new(
                 SourceLocation::new(0, 0),
                 TokenizerFailureKind::UnclosedString
             )))

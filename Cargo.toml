@@ -3,6 +3,13 @@ name = "przntr"
 version = "0.1.0"
 authors = ["agares <me@agares.info>"]
 edition = "2018"
+publish = false
+categories = ["tools"]
+keywords = ["gui", "presentation"]
+license = "MIT"
+description = "an overcomplicated presentation tool"
+readme = "README.md"
+repository = "git@github.com:Agares/przntr.git"
 
 [dependencies]
 [dependencies.sdl2]

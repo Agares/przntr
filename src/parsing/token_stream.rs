@@ -80,14 +80,14 @@ impl TokenizerFailure {
     }
 }
 
-pub struct PeekableTokenStream<'a, T: TokenStream> {
+pub struct Peekable<'a, T: TokenStream> {
     token_stream: &'a mut T,
     peeked: Option<TokenizerResult>,
 }
 
-impl<'a, T: TokenStream> PeekableTokenStream<'a, T> {
+impl<'a, T: TokenStream> Peekable<'a, T> {
     pub fn new(token_stream: &'a mut T) -> Self {
-        PeekableTokenStream {
+        Peekable {
             token_stream,
             peeked: None,
         }
@@ -100,7 +100,7 @@ impl<'a, T: TokenStream> PeekableTokenStream<'a, T> {
     }
 }
 
-impl<'a, T: TokenStream> TokenStream for PeekableTokenStream<'a, T> {
+impl<'a, T: TokenStream> TokenStream for Peekable<'a, T> {
     fn next(&mut self) -> TokenizerResult {
         match self.peeked.take() {
             Some(p) => {
@@ -163,7 +163,7 @@ mod test {
             ),
         ];
         let mut stream = MockTokenStream::new(&mut tokens);
-        let mut peekable_stream = PeekableTokenStream::new(&mut stream);
+        let mut peekable_stream = Peekable::new(&mut stream);
 
         assert_eq!(
             TokenizerResult::Ok(
@@ -209,7 +209,7 @@ mod test {
         ];
 
         let mut stream = MockTokenStream::new(&mut tokens);
-        let mut peekable_stream = PeekableTokenStream::new(&mut stream);
+        let mut peekable_stream = Peekable::new(&mut stream);
 
         assert_eq!(
             &TokenizerResult::Ok(
