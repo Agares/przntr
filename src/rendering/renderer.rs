@@ -44,29 +44,32 @@ impl<'a> SDL2Renderer<'a> {
         )
     }
 
-    fn render_text(&self, text: &str) -> Surface {
-        self.font
+    fn render_text(&self, text: &str) -> Result<Surface, String> {
+        return Ok(self.font
             .render(text)
             .blended(Color::RGB(0xff, 0x18, 0x85))
-            .unwrap()
+            .map_err(|e| return format!("{:?}", e))?)
     }
 }
 
-impl<'a> OnLoop for SDL2Renderer<'a> {
-    fn run(&mut self) {
+impl<'a> OnLoop for SDL2Renderer<'a>  {
+    fn run(&mut self) -> Result<(), String> {
         self.window_canvas.clear();
 
-        let txt = self.render_text("test");
+        let txt = self.render_text("test")?;
 
         let txt_rect = txt.rect();
         let mut dst_txt_rect = txt_rect;
         dst_txt_rect.center_on(self.window_center());
         let texture_creator = self.window_canvas.texture_creator();
-        let texture: Texture = texture_creator.create_texture_from_surface(txt).unwrap();
+        let texture: Texture = texture_creator
+            .create_texture_from_surface(txt)
+            .map_err(|e| return format!("{:?}", e))?;
 
         self.window_canvas
-            .copy(&texture, txt_rect, dst_txt_rect)
-            .unwrap();
+            .copy(&texture, txt_rect, dst_txt_rect)?;
         self.window_canvas.present();
+
+        return Ok(())
     }
 }

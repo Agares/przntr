@@ -1,3 +1,11 @@
+use std::collections::HashMap;
+use std::hash::Hash;
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum StyleError {
+    DuplicateFont(FontDescriptor),
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct Slide {
     name: String,
@@ -9,21 +17,28 @@ impl Slide {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct Font {
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub struct FontDescriptor {
     name: String,
-    path: String,
     weight: u32,
     italic: bool,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Font {
+    path: String,
+    descriptor: FontDescriptor,
 }
 
 impl Font {
     pub fn new(name: String, path: String, weight: u32, italic: bool) -> Self {
         Self {
-            name,
             path,
-            weight,
-            italic,
+            descriptor: FontDescriptor {
+                name,
+                weight,
+                italic,
+            },
         }
     }
 
@@ -34,17 +49,29 @@ impl Font {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Style {
-    fonts: Vec<Font>,
+    fonts: HashMap<FontDescriptor, Font>,
 }
 
 impl Style {
-    pub fn new(fonts: Vec<Font>) -> Self {
-        // todo validate fonts (no repeats with the same name, weight and italicness)
-        Self { fonts }
+    pub fn new(fonts_input: Vec<Font>) -> Result<Self, StyleError> {
+        let mut fonts = HashMap::new();
+        for font in fonts_input {
+            if let Some(font) = fonts.insert(font.descriptor.clone(), font) {
+                return Err(StyleError::DuplicateFont(font.descriptor));
+            }
+        }
+
+        Ok(Self { fonts })
     }
 
-    pub fn fonts(&self) -> &Vec<Font> {
-        &self.fonts
+    pub fn empty() -> Self {
+        Self {
+            fonts: HashMap::new(),
+        }
+    }
+
+    pub fn fonts(&self) -> Vec<&Font> {
+        self.fonts.values().collect()
     }
 }
 
@@ -66,5 +93,19 @@ impl Presentation {
 
     pub fn style(&self) -> &Style {
         &self.style
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    pub fn style_conflicting_fonts() {
+        Style::new(vec![
+            Font::new("some-font".into(), "/some/path/1".into(), 500, false),
+            Font::new("some-font".into(), "/some/path/2".into(), 500, false),
+        ])
+        .expect_err("Expected error from identical font definitions");
     }
 }

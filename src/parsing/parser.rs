@@ -2,7 +2,7 @@ use super::token_stream::{
     PeekableTokenStream, Token, TokenStream, TokenizerFailure, TokenizerResult,
 };
 use crate::parsing::token_stream::SourceLocationRange;
-use crate::presentation::{Font, Presentation, Slide, Style};
+use crate::presentation::{Font, Presentation, Slide, Style, StyleError};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
@@ -15,6 +15,13 @@ pub enum ParserError {
         expected: String,
     },
     TokenizerFailure(TokenizerFailure),
+    InvalidStyleDefinition(StyleError),
+}
+
+impl From<StyleError> for ParserError {
+    fn from(style_error: StyleError) -> Self {
+        ParserError::InvalidStyleDefinition(style_error)
+    }
 }
 
 pub struct Parser<'a, T: TokenStream> {
@@ -99,7 +106,7 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         Ok(Presentation::new(
             title,
             slides,
-            style.unwrap_or_else(|| Style::new(vec![])),
+            style.unwrap_or_else(Style::empty),
         ))
     }
 
@@ -128,14 +135,15 @@ impl<'a, T: TokenStream> Parser<'a, T> {
         consume!(self, Token::KeywordStyle);
         consume!(self, Token::OpeningBrace);
 
-        peek_decide!(
-            self,
-            Token::KeywordFont => fonts.push(self.parse_font()?)
-        );
+        loop {
+            peek_decide!(
+                self,
+                Token::KeywordFont => fonts.push(self.parse_font()?),
+                Token::ClosingBrace => { consume!(self, Token::ClosingBrace); break }
+            );
+        }
 
-        consume!(self, Token::ClosingBrace);
-
-        Ok(Style::new(fonts))
+        Ok(Style::new(fonts)?)
     }
 
     fn parse_font(&mut self) -> Result<Font, ParserError> {
@@ -237,7 +245,7 @@ mod test {
     parser_test!(
         can_parse_metadata_block,
         "metadata { title \"some title\" }",
-        Presentation::new("some title".into(), vec![], Style::new(vec![]))
+        Presentation::new("some title".into(), vec![], Style::new(vec![]).unwrap())
     );
 
     parser_test!(
@@ -246,7 +254,7 @@ mod test {
         Presentation::new(
             "some title".into(),
             vec![Slide::new("first slide".into())],
-            Style::new(vec![])
+            Style::new(vec![]).unwrap()
         )
     );
 
@@ -302,7 +310,7 @@ mod test {
                 "some_path".into(),
                 500,
                 false
-            )])
+            )]).unwrap()
         )
     );
 
@@ -317,7 +325,7 @@ mod test {
                 "some_path".into(),
                 500,
                 true
-            )])
+            )]).unwrap()
         )
     );
 
@@ -332,7 +340,24 @@ mod test {
                 "some_path".into(),
                 500,
                 false
-            )])
+            )]).unwrap()
+        )
+    );
+
+    parser_test!(
+        style_with_multiple_fonts,
+        "metadata { title \"some title\" } \n\
+        style { \n\
+            font { path \"path1\", name font-1, weight 500, } \n\
+            font { path \"path2\", name font-1, weight 500, italic, } \n\
+        }",
+        Presentation::new(
+            "some title".into(),
+            vec![],
+            Style::new(vec![
+                Font::new("font-1".into(), "path1".into(), 500, false),
+                Font::new("font-1".into(), "path2".into(), 500, true)
+            ]).unwrap()
         )
     );
 

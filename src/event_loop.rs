@@ -9,7 +9,7 @@ pub struct EventLoop<'a> {
 }
 
 pub trait OnLoop {
-    fn run(&mut self);
+    fn run(&mut self) -> Result<(), String>;
 }
 
 impl<'a> EventLoop<'a> {
@@ -37,7 +37,9 @@ impl<'a> EventLoop<'a> {
             }
 
             for item in self.onloops.iter_mut() {
-                item.run();
+                if item.run().is_err() {
+                    println!("OnLoop failed!"); // todo more detailed message, actual logging
+                }
             }
 
             // todo implement the FPS limit correctly
