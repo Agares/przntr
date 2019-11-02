@@ -376,7 +376,7 @@ mod test {
     #[test]
     pub fn passes_tokenization_failure_through() {
         let mut results = vec![TokenizerResult::Err(TokenizerFailure::new(
-            SourceLocation::new(0, 0),
+            SourceLocationRange::new_single(SourceLocation::new(0, 0)),
             TokenizerFailureKind::UnclosedString,
         ))];
         let mut stream = MockTokenStream::new(&mut results);
@@ -385,7 +385,7 @@ mod test {
         assert_eq!(
             parser.parse(),
             Err(Error::TokenizerFailure(TokenizerFailure::new(
-                SourceLocation::new(0, 0),
+                SourceLocationRange::new_single(SourceLocation::new(0, 0)),
                 TokenizerFailureKind::UnclosedString
             )))
         );

@@ -69,7 +69,7 @@ impl<'a> Tokenizer<'a> {
             )
         } else {
             TokenizerResult::Err(TokenizerFailure::new(
-                self.current_location(),
+                SourceLocationRange::new(start, self.current_location()),
                 TokenizerFailureKind::InvalidIntegerValue(integer.into()),
             ))
         }
@@ -154,7 +154,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
                         println!("Failure! {:?}", state);
 
                         return TokenizerResult::Err(TokenizerFailure::new(
-                            self.current_location(),
+                            SourceLocationRange::new(start_location, self.current_location()),
                             TokenizerFailureKind::UnexpectedCharacterInName { index, character },
                         ));
                     }
@@ -165,7 +165,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
                         start_location: self.current_location(),
                     }
                 }
-                TokenizerState::ReadingString { .. } if character == '\\' => {
+                TokenizerState::ReadingString { start_location, .. } if character == '\\' => {
                     match self.iter.peek() {
                         Some((_, '\"')) => {
                             self.read_next();
@@ -175,13 +175,13 @@ impl<'a> TokenStream for Tokenizer<'a> {
                             let failure_kind =
                                 TokenizerFailureKind::UnknownEscapeSequence(*character);
                             return TokenizerResult::Err(TokenizerFailure::new(
-                                self.current_location(),
+                                SourceLocationRange::new(start_location, self.current_location()),
                                 failure_kind,
                             ));
                         }
                         _ => {
                             return TokenizerResult::Err(TokenizerFailure::new(
-                                self.current_location(),
+                                SourceLocationRange::new(start_location, self.current_location()),
                                 TokenizerFailureKind::UnfinishedEscapeSequence,
                             ));
                         }
@@ -248,7 +248,7 @@ impl<'a> TokenStream for Tokenizer<'a> {
                         }
                         c => {
                             return TokenizerResult::Err(TokenizerFailure::new(
-                                self.current_location(),
+                                SourceLocationRange::new_single(self.current_location()),
                                 TokenizerFailureKind::UnexpectedCharacter(c),
                             ));
                         }
@@ -263,10 +263,12 @@ impl<'a> TokenStream for Tokenizer<'a> {
                 start_location,
             } => self.handle_name_or_keyword(&self.data[start_index..], start_location),
             TokenizerState::None => TokenizerResult::End,
-            TokenizerState::ReadingString { .. } => TokenizerResult::Err(TokenizerFailure::new(
-                self.current_location(),
-                TokenizerFailureKind::UnclosedString,
-            )),
+            TokenizerState::ReadingString { start_location, .. } => {
+                TokenizerResult::Err(TokenizerFailure::new(
+                    SourceLocationRange::new(start_location, self.current_location()),
+                    TokenizerFailureKind::UnclosedString,
+                ))
+            }
             TokenizerState::ReadingNumber {
                 start_index,
                 start_location,
@@ -334,7 +336,7 @@ mod tests {
         fails_on_invalid_character_in_name,
         "name\"",
         TokenizerFailure::new(
-            SourceLocation::new(0, 5),
+            SourceLocationRange::new(SourceLocation::new(0, 1), SourceLocation::new(0, 5)),
             TokenizerFailureKind::UnexpectedCharacterInName {
                 index: 4,
                 character: '\"'
@@ -348,7 +350,7 @@ mod tests {
 
         assert_eq!(
             TokenizerResult::Err(TokenizerFailure::new(
-                SourceLocation::new(0, 5),
+                SourceLocationRange::new(SourceLocation::new(0, 1), SourceLocation::new(0, 5)),
                 TokenizerFailureKind::UnexpectedCharacterInName {
                     index: 4,
                     character: '\"'
@@ -369,7 +371,7 @@ mod tests {
         fails_on_unclosed_string,
         "\"bla",
         TokenizerFailure::new(
-            SourceLocation::new(0, 5),
+            SourceLocationRange::new(SourceLocation::new(0, 1), SourceLocation::new(0, 5)),
             TokenizerFailureKind::UnclosedString
         )
     );
@@ -384,7 +386,7 @@ mod tests {
         fails_on_unknown_escape_sequence,
         "\"\\a",
         TokenizerFailure::new(
-            SourceLocation::new(0, 2),
+            SourceLocationRange::new(SourceLocation::new(0, 1), SourceLocation::new(0, 2)),
             TokenizerFailureKind::UnknownEscapeSequence('a')
         )
     );
@@ -392,7 +394,7 @@ mod tests {
         fails_on_unfinished_escape_sequence,
         "\"\\",
         TokenizerFailure::new(
-            SourceLocation::new(0, 2),
+            SourceLocationRange::new(SourceLocation::new(0, 1), SourceLocation::new(0, 2)),
             TokenizerFailureKind::UnfinishedEscapeSequence
         )
     );
@@ -415,7 +417,7 @@ mod tests {
         fails_on_unexpected_character,
         "🆒",
         TokenizerFailure::new(
-            SourceLocation::new(0, 1),
+            SourceLocationRange::new_single(SourceLocation::new(0, 1)),
             TokenizerFailureKind::UnexpectedCharacter('🆒')
         )
     );
@@ -451,7 +453,7 @@ mod tests {
         keeps_track_of_column,
         "    🆒",
         TokenizerFailure::new(
-            SourceLocation::new(0, 5),
+            SourceLocationRange::new_single(SourceLocation::new(0, 5)),
             TokenizerFailureKind::UnexpectedCharacter('🆒')
         )
     );
@@ -459,7 +461,7 @@ mod tests {
         keeps_track_of_line,
         "    \n🆒",
         TokenizerFailure::new(
-            SourceLocation::new(1, 1),
+            SourceLocationRange::new_single(SourceLocation::new(1, 1)),
             TokenizerFailureKind::UnexpectedCharacter('🆒')
         )
     );

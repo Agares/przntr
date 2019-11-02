@@ -18,7 +18,10 @@ pub struct SourceLocationRange(SourceLocation, SourceLocation);
 
 impl SourceLocationRange {
     pub fn new(start: SourceLocation, end: SourceLocation) -> Self {
-        // todo assert start <= end
+        if start > end {
+            // todo should this be a return Err() instead?
+            panic!("Invalid source location (start > end)");
+        }
         Self(start, end)
     }
 
@@ -70,12 +73,11 @@ pub enum TokenizerFailureKind {
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct TokenizerFailure {
     kind: TokenizerFailureKind,
-    location: SourceLocation,
+    location: SourceLocationRange,
 }
 
 impl TokenizerFailure {
-    // todo should location be a range instead?
-    pub fn new(location: SourceLocation, kind: TokenizerFailureKind) -> Self {
+    pub fn new(location: SourceLocationRange, kind: TokenizerFailureKind) -> Self {
         Self { location, kind }
     }
 }
